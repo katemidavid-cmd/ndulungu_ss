@@ -1,7 +1,7 @@
 "use client";
 
 import { Menu } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { UserMenu } from "./user-menu";
 
 export function Header({
@@ -13,15 +13,40 @@ export function Header({
 }) {
   const [open, setOpen] = useState(false);
 
+  useEffect(() => {
+    const sync = () => setOpen(document.body.classList.contains("mobile-nav-open"));
+    sync();
+
+    const observer = new MutationObserver(sync);
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  const toggleMenu = () => {
+    const next = !document.body.classList.contains("mobile-nav-open");
+    document.body.classList.toggle("mobile-nav-open", next);
+    setOpen(next);
+  };
+
   return (
-    <header className="sticky top-0 z-10 bg-white border-b border-gray-200 px-6 py-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button className="lg:hidden" onClick={() => setOpen(!open)}>
-            <Menu className="w-5 h-5" />
+    <header className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur-sm sm:px-6">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            aria-label="Toggle navigation menu"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 text-gray-700 transition hover:bg-gray-100 lg:hidden"
+            onClick={toggleMenu}
+          >
+            <Menu className="h-5 w-5" />
           </button>
-          <h1 className="text-xl font-semibold text-gray-900">{title}</h1>
+          <h1 className="text-lg font-semibold text-gray-900 sm:text-xl">{title}</h1>
         </div>
+
         <UserMenu user={user} />
       </div>
     </header>

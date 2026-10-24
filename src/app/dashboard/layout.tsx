@@ -30,7 +30,7 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen overflow-x-hidden bg-gray-50">
       <Sidebar
         role={role}
         user={{
@@ -39,7 +39,7 @@ export default async function DashboardLayout({
           role: role,
         }}
       />
-      <div className="lg:pl-64">
+      <div className="overflow-x-hidden lg:pl-72">
         <Header
           title="Dashboard"
           user={{
@@ -48,7 +48,7 @@ export default async function DashboardLayout({
             role: role,
           }}
         />
-        <main className="p-6">{children}</main>
+        <main className="overflow-x-hidden p-4 sm:p-6">{children}</main>
       </div>
     </div>
   );

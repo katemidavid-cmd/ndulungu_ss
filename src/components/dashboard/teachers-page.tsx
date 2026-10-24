@@ -21,15 +21,12 @@ interface Assignment {
   subject_name: string;
 }
 
-interface SchoolClass {
-  id: string;
-  form: string;
-  stream: string;
-}
-
 interface Subject {
   id: string;
-  name: string;
+  form: string;
+  subject_id: string;
+  subject_name: string;
+  subject_code: string | null;
 }
 
 interface TeachersPageProps {
@@ -44,14 +41,16 @@ const secondaryButtonClassName =
 export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
-  const [classes, setClasses] = useState<SchoolClass[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [classSubjects, setClassSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showTeacherModal, setShowTeacherModal] = useState(false);
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
   const [editing, setEditing] = useState<Teacher | null>(null);
   const [assigningTeacher, setAssigningTeacher] = useState<Teacher | null>(null);
+  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [confirmTeacher, setConfirmTeacher] = useState<Teacher | null>(null);
+  const [confirmAssignment, setConfirmAssignment] = useState<Assignment | null>(null);
   const [form, setForm] = useState({
     first_name: "",
     middle_name: "",
@@ -71,8 +70,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
       const responses = await Promise.all([
         fetch("/api/teachers"),
         fetch("/api/teachers/assignments"),
-        fetch("/api/classes"),
-        fetch("/api/subjects"),
+        fetch("/api/class-subjects"),
       ]);
       const data = await Promise.all(
         responses.map(async (response) => {
@@ -86,8 +84,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
 
       setTeachers(data[0].teachers || []);
       setAssignments(data[1].assignments || []);
-      setClasses(data[2].classes || []);
-      setSubjects(data[3].subjects || []);
+      setClassSubjects(data[2].assignments || []);
       setError("");
     } catch (fetchError) {
       setError(
@@ -103,6 +100,20 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
   useEffect(() => {
     void Promise.resolve().then(fetchAll);
   }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setToast(null);
+    }, 5000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [toast]);
+
+  const showToast = (type: "success" | "error", message: string) => {
+    setToast({ type, message });
+  };
 
   const openAddTeacher = () => {
     setError("");
@@ -143,11 +154,11 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
 
   const saveTeacher = async () => {
     if (!form.first_name.trim() || !form.last_name.trim()) {
-      setError("First name and last name are required.");
+      showToast("error", "First name and last name are required.");
       return;
     }
     if (!editing && (!form.email.trim() || !form.password)) {
-      setError("Email and password are required to add a teacher.");
+      showToast("error", "Email and password are required to add a teacher.");
       return;
     }
 
@@ -171,38 +182,46 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
       }
 
       setShowTeacherModal(false);
+      showToast("success", editing ? "Teacher updated successfully." : "Teacher added successfully.");
       await fetchAll();
     } catch (saveError) {
-      setError(
+      showToast(
+        "error",
         saveError instanceof Error ? saveError.message : "Unable to save the teacher.",
       );
     }
   };
 
   const deleteTeacher = async (teacher: Teacher) => {
-    if (!confirm(`Are you sure you want to delete ${teacher.full_name}?`)) return;
+    setConfirmTeacher(teacher);
+  };
+
+  const confirmTeacherDelete = async () => {
+    if (!confirmTeacher) return;
 
     try {
-      const response = await fetch(`/api/teachers/${teacher.id}`, {
+      const response = await fetch(`/api/teachers/${confirmTeacher.id}`, {
         method: "DELETE",
       });
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error || "Unable to delete the teacher.");
       }
+      showToast("success", `${confirmTeacher.full_name} was deleted successfully.`);
+      setConfirmTeacher(null);
       await fetchAll();
     } catch (deleteError) {
-      setError(
-        deleteError instanceof Error
-          ? deleteError.message
-          : "Unable to delete the teacher.",
+      showToast(
+        "error",
+        deleteError instanceof Error ? deleteError.message : "Unable to delete the teacher.",
       );
+      setConfirmTeacher(null);
     }
   };
 
   const saveAssignment = async () => {
     if (!assigningTeacher || !assignmentForm.class_name || !assignmentForm.subject_name) {
-      setError("Select both a class and a subject.");
+      showToast("error", "Select both a class and a subject.");
       return;
     }
 
@@ -221,46 +240,49 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
         throw new Error(data.error || "Unable to save the assignment.");
       }
       setShowAssignmentModal(false);
+      showToast("success", "Teacher assignment saved successfully.");
       await fetchAll();
     } catch (saveError) {
-      setError(
-        saveError instanceof Error
-          ? saveError.message
-          : "Unable to save the assignment.",
+      showToast(
+        "error",
+        saveError instanceof Error ? saveError.message : "Unable to save the assignment.",
       );
     }
   };
 
   const deleteAssignment = async (assignment: Assignment) => {
-    if (
-      !confirm(
-        `Remove ${assignment.class_name} - ${assignment.subject_name} from this teacher?`,
-      )
-    ) {
-      return;
-    }
+    setConfirmAssignment(assignment);
+  };
+
+  const confirmAssignmentDelete = async () => {
+    if (!confirmAssignment) return;
 
     try {
       const response = await fetch(
-        `/api/teachers/assignments/${assignment.id}`,
+        `/api/teachers/assignments/${confirmAssignment.id}`,
         { method: "DELETE" },
       );
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error || "Unable to remove the assignment.");
       }
+      showToast("success", `${confirmAssignment.class_name} - ${confirmAssignment.subject_name} was removed.`);
+      setConfirmAssignment(null);
       await fetchAll();
     } catch (deleteError) {
-      setError(
-        deleteError instanceof Error
-          ? deleteError.message
-          : "Unable to remove the assignment.",
+      showToast(
+        "error",
+        deleteError instanceof Error ? deleteError.message : "Unable to remove the assignment.",
       );
+      setConfirmAssignment(null);
     }
   };
 
   const getAssignments = (teacherId: string) =>
     assignments.filter((assignment) => assignment.teacher_id === teacherId);
+  const subjectsForSelectedForm = classSubjects.filter(
+    (assignment) => assignment.form === assignmentForm.class_name,
+  );
 
   return (
     <div className="space-y-6">
@@ -302,6 +324,30 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
         </div>
       )}
 
+      {toast && (
+        <div className="fixed right-4 top-20 z-50 flex max-w-sm items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+          <div
+            className={`mt-0.5 h-2.5 w-2.5 rounded-full ${
+              toast.type === "success" ? "bg-emerald-500" : "bg-red-500"
+            }`}
+          />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-slate-900">
+              {toast.type === "success" ? "Success" : "Error"}
+            </p>
+            <p className="mt-0.5 text-sm text-slate-600">{toast.message}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Close alert"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="rounded-lg border border-gray-200 bg-white p-8 text-center text-sm text-gray-600">
           Loading teachers...
@@ -309,7 +355,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
       ) : (
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px]">
+            <table className="w-full min-w-0">
               <thead className="border-b border-gray-200 bg-gray-50">
                 <tr>
                   <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -433,6 +479,60 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {confirmTeacher && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900">Confirm deletion</h3>
+            <p className="mt-2 text-sm text-gray-600">
+              Are you sure you want to delete {confirmTeacher.full_name}?
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmTeacher(null)}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmTeacherDelete()}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmAssignment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900">Remove assignment</h3>
+            <p className="mt-2 text-sm text-gray-600">
+              Remove {confirmAssignment.class_name} - {confirmAssignment.subject_name} from this teacher?
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmAssignment(null)}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmAssignmentDelete()}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+              >
+                Remove
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -597,17 +697,15 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
                     setAssignmentForm({
                       ...assignmentForm,
                       class_name: event.target.value,
+                      subject_name: "",
                     })
                   }
                   className={inputClassName}
                 >
                   <option value="">Select a class</option>
-                  {classes.map((schoolClass) => (
-                    <option
-                      key={schoolClass.id}
-                      value={`${schoolClass.form} ${schoolClass.stream}`}
-                    >
-                      {schoolClass.form} {schoolClass.stream}
+                  {["Form I", "Form II", "Form III", "Form IV"].map((form) => (
+                    <option key={form} value={form}>
+                      {form}
                     </option>
                   ))}
                 </select>
@@ -618,6 +716,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
                 </label>
                 <select
                   value={assignmentForm.subject_name}
+                  disabled={!assignmentForm.class_name || subjectsForSelectedForm.length === 0}
                   onChange={(event) =>
                     setAssignmentForm({
                       ...assignmentForm,
@@ -626,10 +725,16 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
                   }
                   className={inputClassName}
                 >
-                  <option value="">Select a subject</option>
-                  {subjects.map((subject) => (
-                    <option key={subject.id} value={subject.name}>
-                      {subject.name}
+                  <option value="">
+                    {!assignmentForm.class_name
+                      ? "Select a class first"
+                      : subjectsForSelectedForm.length
+                        ? "Select a subject"
+                        : "No subjects assigned to this class"}
+                  </option>
+                  {subjectsForSelectedForm.map((subject) => (
+                    <option key={subject.id} value={subject.subject_name}>
+                      {subject.subject_name} ({subject.subject_code})
                     </option>
                   ))}
                 </select>
