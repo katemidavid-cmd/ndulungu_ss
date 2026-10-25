@@ -18,6 +18,14 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
+## SEO and site URL
+
+Set `NEXT_PUBLIC_SITE_URL` to the canonical public URL of the deployed website
+(for example, `https://your-school-domain.example`). This URL is used for
+canonical metadata, structured school data, `sitemap.xml`, and `robots.txt`.
+Google indexing and search ranking are determined by Google and cannot be
+guaranteed by the application alone.
+
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
 ## Learn More
