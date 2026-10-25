@@ -29,7 +29,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
   const admin = createAdminClient();
   const { data: exam, error: examError } = await admin
     .from("exams")
-    .select("id, name, class_form, term, academic_year, has_practical, status")
+    .select("id, name, class_form, term, academic_year, start_date, end_date, has_practical, status")
     .eq("id", id)
     .maybeSingle();
   if (examError) {
@@ -48,7 +48,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
   const { data: results, error: resultsError } = await admin
     .from("exam_results")
     .select(
-      "student_id, total_marks, average, grade, division, points, position, subject_breakdown",
+      "student_id, total_marks, average, grade, division, points, position, is_incomplete, subject_breakdown",
     )
     .eq("exam_id", id)
     .order("position");
@@ -67,11 +67,100 @@ export async function GET(_request: Request, { params }: RouteContext) {
     return NextResponse.json({ error: studentsError.message }, { status: 500 });
   }
 
+  const [
+    { data: school, error: schoolError },
+    { data: examSubjects, error: examSubjectsError },
+    { data: classes, error: classesError },
+  ] = await Promise.all([
+    admin
+      .from("school_settings")
+      .select("school_name, district, address")
+      .eq("id", 1)
+      .maybeSingle(),
+    admin.from("exam_subjects").select("subject_id").eq("exam_id", id),
+    admin.from("classes").select("id").eq("form", exam.class_form),
+  ]);
+  const metadataError = schoolError || examSubjectsError || classesError;
+  if (metadataError) {
+    return NextResponse.json({ error: metadataError.message }, { status: 500 });
+  }
+
+  const subjectIds = (examSubjects ?? []).map((item) => item.subject_id);
+  const classIds = (classes ?? []).map((item) => item.id);
+  const [
+    { data: subjectRows, error: subjectRowsError },
+    { data: classStudents, error: classStudentsError },
+    { data: classAssignments, error: classAssignmentsError },
+  ] = await Promise.all([
+    subjectIds.length
+      ? admin
+          .from("subjects")
+          .select("id, name, subject_code, has_practical")
+          .in("id", subjectIds)
+          .order("name")
+      : { data: [], error: null },
+    classIds.length
+      ? admin.from("students").select("id, sex").in("class_id", classIds)
+      : { data: [], error: null },
+    subjectIds.length
+      ? admin
+          .from("class_subject_assignments")
+          .select("subject_id, is_compulsory")
+          .eq("form", exam.class_form)
+          .in("subject_id", subjectIds)
+      : { data: [], error: null },
+  ]);
+  const subjectsError = subjectRowsError || classStudentsError || classAssignmentsError;
+  if (subjectsError) {
+    return NextResponse.json({ error: subjectsError.message }, { status: 500 });
+  }
+
+  const optionalSubjectIds = (classAssignments ?? [])
+    .filter((assignment) => !assignment.is_compulsory)
+    .map((assignment) => assignment.subject_id);
+  const classStudentIds = (classStudents ?? []).map((student) => student.id);
+  const { data: optionalEnrollments, error: enrollmentsError } =
+    optionalSubjectIds.length > 0 && classStudentIds.length > 0
+      ? await admin
+          .from("student_subjects")
+          .select("student_id, subject_id")
+          .in("subject_id", optionalSubjectIds)
+          .in("student_id", classStudentIds)
+      : { data: [], error: null };
+  if (enrollmentsError) {
+    return NextResponse.json({ error: enrollmentsError.message }, { status: 500 });
+  }
+
+  const enrollmentCounts = new Map<string, number>();
+  for (const enrollment of optionalEnrollments ?? []) {
+    enrollmentCounts.set(
+      enrollment.subject_id,
+      (enrollmentCounts.get(enrollment.subject_id) ?? 0) + 1,
+    );
+  }
+  const compulsorySubjects = new Set(
+    (classAssignments ?? [])
+      .filter((assignment) => assignment.is_compulsory)
+      .map((assignment) => assignment.subject_id),
+  );
+  const subjects = (subjectRows ?? []).map((subject) => ({
+    ...subject,
+    registered: compulsorySubjects.has(subject.id)
+      ? classStudentIds.length
+      : enrollmentCounts.get(subject.id) ?? 0,
+  }));
+
   const studentsById = new Map(
     (students ?? []).map((student) => [student.id, student]),
   );
   return NextResponse.json({
     exam,
+    school: school ?? {
+      school_name: "Ndulungu Secondary School",
+      district: "",
+      address: "",
+    },
+    subjects,
     results: (results ?? []).map((result) => ({
       ...result,
       student: studentsById.get(result.student_id) ?? null,

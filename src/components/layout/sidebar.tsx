@@ -57,6 +57,8 @@ const navByRole: Record<string, RoleNavigation> = {
         label: "Examinations",
         items: [
           { label: "Exam Management", href: "/dashboard/headmaster/exams", icon: FileText },
+          { label: "View Results", href: "/dashboard/headmaster/exams?status=Processed", icon: ClipboardList },
+          { label: "Report Cards", href: "/dashboard/headmaster/report-cards", icon: FileText },
         ],
       },
       {
@@ -90,6 +92,8 @@ const navByRole: Record<string, RoleNavigation> = {
         label: "Examinations",
         items: [
           { label: "Exam Management", href: "/dashboard/academic/exams", icon: FileText },
+          { label: "View Results", href: "/dashboard/academic/exams?status=Processed", icon: ClipboardList },
+          { label: "Report Cards", href: "/dashboard/academic/report-cards", icon: FileText },
         ],
       },
       {

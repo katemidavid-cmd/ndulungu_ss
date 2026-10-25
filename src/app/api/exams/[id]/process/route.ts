@@ -6,22 +6,13 @@ type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
-type GradeScale = Record<string, { min: number; max: number }>;
-type GradePoints = Record<string, number>;
-type DivisionRule = { name: string; min: number; max: number };
-
-function gradeFor(percentage: number, scale: GradeScale) {
+function gradeFor(percentage: number) {
   const wholePercentage = Math.floor(percentage);
-  return (
-    Object.entries(scale).find(
-      ([, range]) =>
-        wholePercentage >= range.min && wholePercentage <= range.max,
-    )?.[0] ?? "F"
-  );
-}
-
-function pointsFor(grade: string, points: GradePoints) {
-  return points[grade] ?? points.F ?? 5;
+  if (wholePercentage >= 75) return "A";
+  if (wholePercentage >= 65) return "B";
+  if (wholePercentage >= 45) return "C";
+  if (wholePercentage >= 30) return "D";
+  return "F";
 }
 
 export async function POST(_request: Request, { params }: RouteContext) {
@@ -63,7 +54,6 @@ export async function POST(_request: Request, { params }: RouteContext) {
     { data: examSubjectRows, error: examSubjectsError },
     { data: classSubjectRows, error: classSubjectsError },
     { data: schoolClasses, error: classesError },
-    { data: settingsRows, error: settingsError },
   ] = await Promise.all([
     admin.from("exam_subjects").select("subject_id").eq("exam_id", id),
     admin
@@ -71,13 +61,8 @@ export async function POST(_request: Request, { params }: RouteContext) {
       .select("subject_id, is_compulsory")
       .eq("form", exam.class_form),
     admin.from("classes").select("id").eq("form", exam.class_form),
-    admin
-      .from("exam_settings")
-      .select("grading_scale, grade_points, division_rules")
-      .limit(1),
   ]);
-  const queryError =
-    examSubjectsError || classSubjectsError || classesError || settingsError;
+  const queryError = examSubjectsError || classSubjectsError || classesError;
   if (queryError) {
     return NextResponse.json({ error: queryError.message }, { status: 500 });
   }
@@ -103,7 +88,7 @@ export async function POST(_request: Request, { params }: RouteContext) {
   }
   const { data: subjectRows, error: subjectRowsError } = await admin
     .from("subjects")
-    .select("id, name, has_practical")
+    .select("id, name, subject_code, has_practical")
     .in("id", examSubjectIds);
   if (subjectRowsError) {
     return NextResponse.json({ error: subjectRowsError.message }, { status: 500 });
@@ -192,54 +177,12 @@ export async function POST(_request: Request, { params }: RouteContext) {
       mark,
     ]),
   );
-  const missingMarks = expectedEntries.filter(({ student_id, subject_id }) => {
-    const mark = markMap.get(`${student_id}:${subject_id}`);
-    return (
-      !mark ||
-      (!mark.is_absent &&
-        (mark.theory_score === null ||
-          (subjectHasPractical(subject_id) && mark.practical_score === null)))
-    );
-  });
-  if (missingMarks.length > 0) {
-    return NextResponse.json(
-      {
-        error: `Cannot process yet: ${missingMarks.length} student subject mark(s) are still incomplete.`,
-        missing_count: missingMarks.length,
-      },
-      { status: 409 },
-    );
-  }
-
-  const settings = settingsRows?.[0];
-  const scale = (settings?.grading_scale ?? {
-    A: { min: 75, max: 100 },
-    B: { min: 65, max: 74 },
-    C: { min: 45, max: 64 },
-    D: { min: 30, max: 44 },
-    F: { min: 0, max: 29 },
-  }) as GradeScale;
-  const gradePoints = (settings?.grade_points ?? {
-    A: 1,
-    B: 2,
-    C: 3,
-    D: 4,
-    F: 5,
-  }) as GradePoints;
-  const divisionSettings = settings?.division_rules as
-    | { best_subjects?: number; divisions?: DivisionRule[] }
-    | null;
-  const divisionRules = divisionSettings?.divisions ?? [
-    { name: "DIV I", min: 7, max: 17 },
-    { name: "DIV II", min: 18, max: 21 },
-    { name: "DIV III", min: 22, max: 25 },
-    { name: "DIV IV", min: 26, max: 33 },
-    { name: "DIV 0", min: 34, max: 35 },
-  ];
   const subjectNames = new Map(
-    (subjectRows ?? []).map((subject) => [subject.id, subject.name]),
+    (subjectRows ?? []).map((subject) => [
+      subject.id,
+      { name: subject.name, code: subject.subject_code },
+    ]),
   );
-  const bestSubjects = Math.max(1, Number(divisionSettings?.best_subjects ?? 7));
 
   const resultRows = students
     .filter((student) =>
@@ -250,65 +193,119 @@ export async function POST(_request: Request, { params }: RouteContext) {
       .filter((entry) => entry.student_id === student.id)
       .map(({ subject_id }) => {
         const mark = markMap.get(`${student.id}:${subject_id}`);
-        const rawTotal = mark?.is_absent
-          ? 0
-          : Number(mark?.theory_score ?? 0) +
-            Number(subjectHasPractical(subject_id) ? mark?.practical_score ?? 0 : 0);
         const hasPractical = subjectHasPractical(subject_id);
+        const missing =
+          !mark ||
+          (!mark.is_absent &&
+            (mark.theory_score === null ||
+              (hasPractical && mark.practical_score === null)));
+        const sat = Boolean(mark && !mark.is_absent && !missing);
+        const rawTotal = sat
+          ? Number(mark?.theory_score) +
+            Number(hasPractical ? mark?.practical_score ?? 0 : 0)
+          : null;
         const maximum = hasPractical ? 150 : 100;
-        const percentage = Math.round((rawTotal / maximum) * 10000) / 100;
-        const grade = gradeFor(percentage, scale);
+        const percentage =
+          rawTotal === null
+            ? null
+            : Math.round((rawTotal / maximum) * 10000) / 100;
+        const grade =
+          percentage === null
+            ? mark?.is_absent
+              ? "ABS"
+              : "—"
+            : gradeFor(percentage);
+        const points =
+          grade === "A" ? 1
+          : grade === "B" ? 2
+          : grade === "C" ? 3
+          : grade === "D" ? 4
+          : grade === "F" ? 5
+          : null;
         return {
           subject_id,
-          subject: subjectNames.get(subject_id) ?? "Subject",
+          subject: subjectNames.get(subject_id)?.name ?? "Subject",
+          code: subjectNames.get(subject_id)?.code ?? "",
           has_practical: hasPractical,
-          theory: mark?.is_absent ? null : mark?.theory_score,
-          practical:
-            hasPractical && !mark?.is_absent
-              ? mark?.practical_score
-              : null,
+          theory: sat ? mark?.theory_score ?? null : null,
+          practical: sat && hasPractical ? mark?.practical_score ?? null : null,
           total: rawTotal,
           percentage,
           grade,
-          points: pointsFor(grade, gradePoints),
+          points,
           absent: mark?.is_absent ?? false,
+          missing,
         };
-        });
-    const totalMarks = breakdown.reduce((sum, subject) => sum + subject.total, 0);
+      });
+    const satSubjects = breakdown.filter(
+      (subject) => !subject.missing && !subject.absent && subject.percentage !== null,
+    );
+    const totalMarks = satSubjects.reduce(
+      (sum, subject) => sum + (subject.total ?? 0),
+      0,
+    );
     const average =
-      breakdown.length > 0
+      satSubjects.length > 0
         ? Math.round(
-            (breakdown.reduce((sum, subject) => sum + subject.percentage, 0) /
-              breakdown.length) *
+            (satSubjects.reduce((sum, subject) => sum + (subject.percentage ?? 0), 0) /
+              satSubjects.length) *
               100,
           ) / 100
-        : 0;
+        : null;
     const points = breakdown
       .map((subject) => subject.points)
+      .filter((point): point is number => point !== null)
       .sort((a, b) => a - b)
-      .slice(0, bestSubjects)
+      .slice(0, 7)
       .reduce((sum, value) => sum + value, 0);
-    const division =
-      divisionRules.find((rule) => points >= rule.min && points <= rule.max)
-        ?.name ?? "DIV 0";
+    const isIncomplete = breakdown.some((subject) => subject.missing);
+    const division = isIncomplete
+      ? "Incomplete"
+      : points >= 7 && points <= 17
+        ? "DIV I"
+        : points >= 18 && points <= 21
+          ? "DIV II"
+          : points >= 22 && points <= 25
+            ? "DIV III"
+            : points >= 26 && points <= 33
+              ? "DIV IV"
+              : "DIV 0";
 
     return {
       exam_id: id,
       student_id: student.id,
       total_marks: totalMarks,
       average,
-      grade: gradeFor(average, scale),
+      grade: average === null ? "—" : gradeFor(average),
       division,
       points,
-      is_incomplete: false,
+      is_incomplete: isIncomplete,
       subject_breakdown: breakdown,
       computed_at: new Date().toISOString(),
     };
   });
 
-  const rankedRows = [...resultRows]
-    .sort((a, b) => b.average - a.average || a.points - b.points)
-    .map((result, index) => ({ ...result, position: index + 1 }));
+  const sortedRows = [...resultRows].sort(
+    (a, b) =>
+      (b.average ?? -1) - (a.average ?? -1) ||
+      a.points - b.points ||
+      a.student_id.localeCompare(b.student_id),
+  );
+  let previousAverage: number | null = null;
+  let previousPosition = 0;
+  const rankedRows = sortedRows.map((result, index) => {
+    const position =
+      result.average !== null && result.average === previousAverage
+        ? previousPosition
+        : result.average === null
+          ? null
+          : index + 1;
+    if (result.average !== null) {
+      previousAverage = result.average;
+      previousPosition = position ?? index + 1;
+    }
+    return { ...result, position };
+  });
   const { error: upsertError } = await admin
     .from("exam_results")
     .upsert(rankedRows, { onConflict: "exam_id,student_id" });
@@ -359,5 +356,6 @@ export async function POST(_request: Request, { params }: RouteContext) {
   return NextResponse.json({
     exam: processedExam,
     results_count: rankedRows.length,
+    incomplete_count: rankedRows.filter((result) => result.is_incomplete).length,
   });
 }

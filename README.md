@@ -33,6 +33,14 @@ Before using the headmaster school settings or editing profiles, run
 in the Supabase SQL Editor. It creates the school settings table, the public
 logo storage bucket, and the row/column permissions needed by the application.
 
+## Examination result reports
+
+Processed examination reports are available from Exam Management. Reports use
+the school name, district, and postal address in School Settings and can be
+filtered by class, academic year, and examination. Processing records missing
+required marks as incomplete and closes further mark entry. Reports support
+printing to PDF and export to a CSV file that can be opened in Excel.
+
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
 ## Learn More

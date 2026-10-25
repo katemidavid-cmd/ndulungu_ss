@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Calculator,
   BookOpen,
@@ -15,10 +15,12 @@ import {
   Play,
   Plus,
   Search,
+  TriangleAlert,
   X,
 } from "lucide-react";
 import Link from "next/link";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
+import { Pagination } from "@/components/ui/pagination";
 import { notify } from "@/lib/notifications";
 
 type Exam = {
@@ -68,9 +70,11 @@ function statusStyle(status: Exam["status"]) {
 export function ExamManagementPage({
   canManageExams,
   dashboardBase,
+  initialStatus = "All",
 }: {
   canManageExams: boolean;
   dashboardBase: string;
+  initialStatus?: string;
 }) {
   const [exams, setExams] = useState<Exam[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -79,8 +83,25 @@ export function ExamManagementPage({
   const [saving, setSaving] = useState(false);
   const [updatingExamId, setUpdatingExamId] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [examToProcess, setExamToProcess] = useState<Exam | null>(null);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState(0);
+  const [overallTotal, setOverallTotal] = useState(0);
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({
+    Draft: 0,
+    Active: 0,
+    Processed: 0,
+  });
+  const [examsLoading, setExamsLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [statusFilter, setStatusFilter] = useState(
+    ["All", "Draft", "Active", "Processed"].includes(initialStatus)
+      ? initialStatus
+      : "All",
+  );
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<Set<string>>(
     new Set(),
   );
@@ -92,39 +113,34 @@ export function ExamManagementPage({
     has_practical: false,
   });
 
-  const load = useCallback(async () => {
+  const loadSupport = useCallback(async () => {
+    if (!canManageExams) {
+      setLoading(false);
+      return;
+    }
     try {
-      const requests = [fetch("/api/exams")];
-      if (canManageExams) {
-        requests.push(fetch("/api/subjects"));
-        requests.push(fetch("/api/settings/academic-period"));
-      }
-      const responses = await Promise.all(requests);
-      const examsResult = await responses[0].json();
-      if (!responses[0].ok) {
-        throw new Error(examsResult.error || "Unable to load examinations.");
-      }
-      setExams((examsResult.exams ?? []) as Exam[]);
-      if (canManageExams) {
-        const subjectsResult = await responses[1].json();
-        if (!responses[1].ok) {
-          throw new Error(subjectsResult.error || "Unable to load subjects.");
-        }
-        setSubjects((subjectsResult.subjects ?? []) as Subject[]);
+      const [subjectsResponse, periodResponse] = await Promise.all([
+        fetch("/api/subjects"),
+        fetch("/api/settings/academic-period"),
+      ]);
 
-        const periodResponse = responses[2];
-        const periodResult = await periodResponse.json();
-        if (!periodResponse.ok && periodResponse.status !== 409) {
-          throw new Error(
-            periodResult.error || "Unable to load the active academic period.",
-          );
-        }
-        setActivePeriod(
-          periodResponse.ok
-            ? (periodResult.period as AcademicPeriod | null)
-            : null,
+      const subjectsResult = await subjectsResponse.json();
+      if (!subjectsResponse.ok) {
+        throw new Error(subjectsResult.error || "Unable to load subjects.");
+      }
+      setSubjects((subjectsResult.subjects ?? []) as Subject[]);
+
+      const periodResult = await periodResponse.json();
+      if (!periodResponse.ok && periodResponse.status !== 409) {
+        throw new Error(
+          periodResult.error || "Unable to load the active academic period.",
         );
       }
+      setActivePeriod(
+        periodResponse.ok
+          ? (periodResult.period as AcademicPeriod | null)
+          : null,
+      );
     } catch (error) {
       notify(
         "error",
@@ -136,27 +152,78 @@ export function ExamManagementPage({
   }, [canManageExams]);
 
   useEffect(() => {
-    void Promise.resolve().then(load);
-  }, [load]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadSupport();
+  }, [loadSupport]);
 
-  const visibleExams = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return exams.filter((exam) => {
-      const matchesStatus = statusFilter === "All" || exam.status === statusFilter;
-      const matchesSearch =
-        !term ||
-        exam.name.toLowerCase().includes(term) ||
-        exam.class_form.toLowerCase().includes(term) ||
-        exam.academic_year.toLowerCase().includes(term);
-      return matchesStatus && matchesSearch;
-    });
-  }, [exams, search, statusFilter]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
-  const draftCount = exams.filter((exam) => exam.status === "Draft").length;
-  const activeCount = exams.filter((exam) => exam.status === "Active").length;
-  const processedCount = exams.filter(
-    (exam) => exam.status === "Processed",
-  ).length;
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPage(1);
+  }, [debouncedSearch, pageSize, statusFilter]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (page > totalPages) setPage(totalPages);
+  }, [page, total, pageSize]);
+
+  const loadExams = useCallback(async () => {
+    setExamsLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: String(pageSize),
+      });
+      if (debouncedSearch) params.set("search", debouncedSearch);
+      if (statusFilter !== "All") params.set("status", statusFilter);
+
+      const response = await fetch(`/api/exams?${params.toString()}`);
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Unable to load examinations.");
+      }
+
+      setExams((data.exams ?? []) as Exam[]);
+      setTotal(data.total ?? 0);
+      setOverallTotal(data.overallTotal ?? 0);
+      setStatusCounts(
+        (data.statusCounts ?? { Draft: 0, Active: 0, Processed: 0 }) as Record<
+          string,
+          number
+        >,
+      );
+    } catch (error) {
+      notify(
+        "error",
+        error instanceof Error ? error.message : "Unable to load examinations.",
+      );
+    } finally {
+      setExamsLoading(false);
+    }
+  }, [debouncedSearch, page, pageSize, statusFilter]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadExams();
+  }, [loadExams, refreshKey]);
+
+  const refreshAll = useCallback(async () => {
+    setPage(1);
+    setRefreshKey((current) => current + 1);
+    await loadSupport();
+  }, [loadSupport]);
+
+  const visibleExams = exams;
+  const draftCount = statusCounts.Draft ?? 0;
+  const activeCount = statusCounts.Active ?? 0;
+  const processedCount = statusCounts.Processed ?? 0;
 
   function closeCreateForm() {
     setShowCreateForm(false);
@@ -217,7 +284,7 @@ export function ExamManagementPage({
         has_practical: false,
       }));
       closeCreateForm();
-      await load();
+      await refreshAll();
     } catch (error) {
       notify(
         "error",
@@ -229,13 +296,6 @@ export function ExamManagementPage({
   }
 
   async function updateExamStatus(exam: Exam, action: "activate" | "process") {
-    if (action === "process" &&
-      !window.confirm(
-        `Process results for "${exam.name}"? This closes mark entry for the examination.`,
-      )) {
-      return;
-    }
-
     setUpdatingExamId(exam.id);
     try {
       const response = await fetch(`/api/exams/${exam.id}/${action}`, {
@@ -243,6 +303,7 @@ export function ExamManagementPage({
       });
       const result = (await response.json()) as {
         results_count?: number;
+        incomplete_count?: number;
         error?: string;
       };
       if (!response.ok) {
@@ -252,9 +313,10 @@ export function ExamManagementPage({
         "success",
         action === "activate"
           ? "Examination activated. Teachers can now enter marks."
-          : `Examination processed. ${result.results_count ?? 0} student results are ready.`,
+          : `Examination processed. ${result.results_count ?? 0} student results are ready; ${result.incomplete_count ?? 0} are incomplete.`,
       );
-      await load();
+      if (action === "process") setStatusFilter("Processed");
+      await refreshAll();
     } catch (error) {
       notify(
         "error",
@@ -264,6 +326,7 @@ export function ExamManagementPage({
       );
     } finally {
       setUpdatingExamId(null);
+      if (action === "process") setExamToProcess(null);
     }
   }
 
@@ -302,7 +365,7 @@ export function ExamManagementPage({
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { label: "Total exams", value: exams.length, icon: ClipboardList },
+          { label: "Total exams", value: overallTotal, icon: ClipboardList },
           { label: "Drafts", value: draftCount, icon: Clock3 },
           { label: "Active", value: activeCount, icon: CalendarDays },
           { label: "Processed", value: processedCount, icon: Check },
@@ -316,7 +379,7 @@ export function ExamManagementPage({
             </span>
             <p className="mt-3 text-sm text-slate-500">{label}</p>
             <p className="mt-0.5 text-2xl font-bold text-slate-950">
-              {loading ? "—" : value}
+              {loading || examsLoading ? "-" : value}
             </p>
           </div>
         ))}
@@ -349,7 +412,7 @@ export function ExamManagementPage({
           )}
         </div>
 
-        {loading ? (
+        {loading || examsLoading ? (
           <div className="flex justify-center p-10">
             <LoadingIndicator label="Loading examinations..." />
           </div>
@@ -359,14 +422,14 @@ export function ExamManagementPage({
               <GraduationCap className="h-7 w-7" />
             </span>
             <h3 className="mt-4 font-semibold text-slate-900">
-              {exams.length === 0 ? "No examinations yet" : "No matching examinations"}
+              {overallTotal === 0 ? "No examinations yet" : "No matching examinations"}
             </h3>
             <p className="mt-1 max-w-md text-sm leading-6 text-slate-500">
               {canManageExams
                 ? "Create an examination to start organizing assessment periods."
                 : "Active examinations assigned to your classes will appear here, even if their dates have not started."}
             </p>
-            {canManageExams && exams.length === 0 && (
+            {canManageExams && overallTotal === 0 && (
               <button
                 type="button"
                 onClick={() => setShowCreateForm(true)}
@@ -444,7 +507,7 @@ export function ExamManagementPage({
                       <button
                         type="button"
                         disabled={updatingExamId !== null}
-                        onClick={() => void updateExamStatus(exam, "process")}
+                        onClick={() => setExamToProcess(exam)}
                         className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-violet-700 px-4 text-sm font-semibold text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {updatingExamId === exam.id ? (
@@ -481,6 +544,15 @@ export function ExamManagementPage({
             ))}
           </div>
         )}
+
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          loading={examsLoading}
+        />
       </section>
 
       {showCreateForm && canManageExams && (
@@ -672,6 +744,60 @@ export function ExamManagementPage({
                 </button>
               </div>
             </form>
+          </section>
+        </div>
+      )}
+
+      {examToProcess && (
+        <div
+          className="fixed inset-0 z-[90] flex items-end justify-center bg-slate-950/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && updatingExamId === null) {
+              setExamToProcess(null);
+            }
+          }}
+        >
+          <section
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="process-exam-title"
+            aria-describedby="process-exam-description"
+            className="w-full rounded-t-3xl bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-lg sm:rounded-2xl sm:p-6"
+          >
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+              <TriangleAlert className="h-5 w-5" />
+            </span>
+            <h3 id="process-exam-title" className="mt-4 text-lg font-bold text-slate-950 dark:text-white">
+              Process examination results?
+            </h3>
+            <p id="process-exam-description" className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
+              Results for <span className="font-semibold">{examToProcess.name}</span> will be calculated. Missing required marks will be recorded as incomplete, and mark entry will close.
+            </p>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                disabled={updatingExamId !== null}
+                onClick={() => setExamToProcess(null)}
+                className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={updatingExamId !== null}
+                onClick={() => {
+                  void updateExamStatus(examToProcess, "process");
+                }}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-violet-700 px-4 text-sm font-semibold text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {updatingExamId === examToProcess.id ? (
+                  <LoaderCircle className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4" />
+                )}
+                Process results
+              </button>
+            </div>
           </section>
         </div>
       )}

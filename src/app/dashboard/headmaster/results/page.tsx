@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function HeadmasterResultsRedirect() {
-  redirect("/dashboard/headmaster/exams");
+  redirect("/dashboard/headmaster/exams?status=Processed");
 }
