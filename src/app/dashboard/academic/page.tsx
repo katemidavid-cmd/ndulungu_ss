@@ -1,10 +1,19 @@
 import { BookOpen, Users, FileText, ClipboardList } from "lucide-react";
+import { createClient } from "@/lib/supabase/server";
 
-export default function AcademicDashboard() {
+export default async function AcademicDashboard() {
+  const supabase = await createClient();
+
+  const [classesRes, subjectsRes, teachersRes] = await Promise.all([
+    supabase.from("classes").select("id", { count: "exact", head: true }),
+    supabase.from("subjects").select("id", { count: "exact", head: true }),
+    supabase.from("profiles").select("id", { count: "exact", head: true }).eq("role", "teacher"),
+  ]);
+
   const stats = [
-    { label: "Classes", value: "12", icon: BookOpen, color: "bg-blue-500" },
-    { label: "Subjects", value: "28", icon: ClipboardList, color: "bg-green-500" },
-    { label: "Teachers", value: "24", icon: Users, color: "bg-purple-500" },
+    { label: "Classes", value: String(classesRes.count || 0), icon: BookOpen, color: "bg-blue-500" },
+    { label: "Subjects", value: String(subjectsRes.count || 0), icon: ClipboardList, color: "bg-green-500" },
+    { label: "Teachers", value: String(teachersRes.count || 0), icon: Users, color: "bg-purple-500" },
     { label: "Pending Results", value: "5", icon: FileText, color: "bg-orange-500" },
   ];
 

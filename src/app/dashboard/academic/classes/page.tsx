@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, BookOpen, CheckCircle2, Loader2, Plus, Trash2, Users, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { BookOpen, Loader2, Plus, Trash2, Users, X } from "lucide-react";
+import { LoadingIndicator } from "@/components/ui/loading-indicator";
+import { notify } from "@/lib/notifications";
 import { createClient } from "@/lib/supabase/client";
 
 type FormLevel = "Form I" | "Form II" | "Form III" | "Form IV";
@@ -20,12 +22,6 @@ type Student = {
   class_id: string;
 };
 
-type Toast = {
-  id: number;
-  type: "success" | "error";
-  message: string;
-};
-
 export default function ClassesPage() {
   const supabase = useMemo(() => createClient(), []);
   const [classes, setClasses] = useState<SchoolClass[]>([]);
@@ -34,19 +30,11 @@ export default function ClassesPage() {
   const [stream, setStream] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SchoolClass | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const toastIdRef = useRef(0);
 
   const showToast = useCallback((type: "success" | "error", message: string) => {
-    const id = toastIdRef.current++;
-    setToasts((current) => [...current, { id, type, message }]);
-    window.setTimeout(() => {
-      setToasts((current) => current.filter((toast) => toast.id !== id));
-    }, 5000);
+    notify(type, message);
   }, []);
 
   const load = useCallback(async () => {
@@ -65,13 +53,12 @@ export default function ClassesPage() {
         "Failed to load data. Make sure the supabase/classes.sql migration has been applied."
       );
     } else {
-      setError(null);
       setClasses((classesResult.data ?? []) as SchoolClass[]);
       setStudents((studentsResult.data ?? []) as Student[]);
     }
 
     setLoading(false);
-  }, [supabase]);
+  }, [supabase, showToast]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -114,9 +101,6 @@ export default function ClassesPage() {
     }
 
     setSaving(true);
-    setError(null);
-    setNotice(null);
-
     const { error: insertError } = await supabase
       .from("classes")
       .insert({ form: activeForm, stream: name });
@@ -141,9 +125,6 @@ export default function ClassesPage() {
   async function confirmDeleteClass() {
     if (!deleteTarget) return;
     setDeleting(true);
-    setError(null);
-    setNotice(null);
-
     const { error: deleteError } = await supabase
       .from("classes")
       .delete()
@@ -181,20 +162,6 @@ export default function ClassesPage() {
         </p>
       </div>
 
-      {error && (
-        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {notice && (
-        <div className="flex items-start gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{notice}</span>
-        </div>
-      )}
-
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {FORM_LEVELS.map((form) => {
           const streams = classes.filter((item) => item.form === form);
@@ -205,8 +172,6 @@ export default function ClassesPage() {
               type="button"
               onClick={() => {
                 setActiveForm(form);
-                setError(null);
-                setNotice(null);
               }}
               className={`rounded-lg border p-4 text-left transition-colors ${
                 active
@@ -261,10 +226,7 @@ export default function ClassesPage() {
         <div className="rounded-lg border border-gray-200 bg-white p-6">
           <h3 className="text-lg font-semibold text-gray-900">{activeForm} Streams</h3>
           {loading ? (
-            <div className="flex items-center gap-2 py-4 text-sm text-gray-500">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading...
-            </div>
+            <LoadingIndicator label="Loading classes..." className="py-4" />
           ) : formClasses.length ? (
             <div className="mt-4 space-y-2">
               {formClasses.map((item) => (
@@ -346,32 +308,50 @@ export default function ClassesPage() {
       </div>
     )}
 
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
-      {toasts.map((toast) => (
-        <div
-          key={toast.id}
-          className={`flex max-w-sm items-start gap-2 rounded-lg border px-4 py-3 shadow-lg ${
-            toast.type === "success"
-              ? "border-green-200 bg-green-50 text-green-700"
-              : "border-red-200 bg-red-50 text-red-700"
-          }`}
-        >
-          {toast.type === "success" ? (
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-          ) : (
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          )}
-          <p className="flex-1 text-sm">{toast.message}</p>
-          <button
-            type="button"
-            onClick={() => setToasts((current) => current.filter((item) => item.id !== toast.id))}
-            className="text-current/70 hover:text-current"
-          >
-            <X className="h-4 w-4" />
-          </button>
+    {deleteTarget && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="w-full max-w-md rounded-lg bg-white shadow-xl">
+          <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+            <h3 className="text-lg font-semibold text-gray-900">Delete Stream</h3>
+            <button
+              type="button"
+              onClick={() => setDeleteTarget(null)}
+              className="rounded p-1 text-gray-400 hover:text-gray-600"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="px-6 py-4">
+            <p className="text-sm text-gray-700">
+              Are you sure you want to delete <span className="font-medium text-gray-900">{deleteTarget.form} {deleteTarget.stream}</span>?
+            </p>
+            <p className="mt-1 text-xs text-gray-500">
+              {deleteCount > 0
+                ? `This will also delete ${deleteCount} student(s) in this stream. This action cannot be undone.`
+                : "This action cannot be undone."}
+            </p>
+          </div>
+          <div className="flex items-center justify-end gap-2 border-t border-gray-200 px-6 py-4">
+            <button
+              type="button"
+              onClick={() => setDeleteTarget(null)}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void confirmDeleteClass()}
+              disabled={deleting}
+              className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 disabled:opacity-50"
+            >
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Delete
+            </button>
+          </div>
         </div>
-      ))}
-    </div>
+      </div>
+    )}
 
     {deleteTarget && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
@@ -418,105 +398,6 @@ export default function ClassesPage() {
       </div>
     )}
 
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
-      {toasts.map((toast) => (
-        <div
-          key={toast.id}
-          className={`flex max-w-sm items-start gap-2 rounded-lg border px-4 py-3 shadow-lg ${
-            toast.type === "success"
-              ? "border-green-200 bg-green-50 text-green-700"
-              : "border-red-200 bg-red-50 text-red-700"
-          }`}
-        >
-          {toast.type === "success" ? (
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-          ) : (
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          )}
-          <p className="flex-1 text-sm">{toast.message}</p>
-          <button
-            type="button"
-            onClick={() => setToasts((current) => current.filter((item) => item.id !== toast.id))}
-            className="text-current/70 hover:text-current"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      ))}
-    </div>
-
-    {deleteTarget && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-        <div className="w-full max-w-md rounded-lg bg-white shadow-xl">
-          <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-            <h3 className="text-lg font-semibold text-gray-900">Delete Stream</h3>
-            <button
-              type="button"
-              onClick={() => setDeleteTarget(null)}
-              className="rounded p-1 text-gray-400 hover:text-gray-600"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          <div className="px-6 py-4">
-            <p className="text-sm text-gray-700">
-              Are you sure you want to delete <span className="font-medium text-gray-900">{deleteTarget.form} {deleteTarget.stream}</span>?
-            </p>
-            <p className="mt-1 text-xs text-gray-500">
-              {deleteCount > 0
-                ? `This will also delete ${deleteCount} student(s) in this stream. This action cannot be undone.`
-                : "This action cannot be undone."}
-            </p>
-          </div>
-          <div className="flex items-center justify-end gap-2 border-t border-gray-200 px-6 py-4">
-            <button
-              type="button"
-              onClick={() => setDeleteTarget(null)}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => void confirmDeleteClass()}
-              disabled={deleting}
-              className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 disabled:opacity-50"
-            >
-              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              Delete
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
-
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
-      {toasts.map((toast) => (
-        <div
-          key={toast.id}
-          className={`flex max-w-sm items-start gap-2 rounded-lg border px-4 py-3 shadow-lg ${
-            toast.type === "success"
-              ? "border-green-200 bg-green-50 text-green-700"
-              : "border-red-200 bg-red-50 text-red-700"
-          }`}
-        >
-          {toast.type === "success" ? (
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-          ) : (
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          )}
-          <p className="flex-1 text-sm">{toast.message}</p>
-          <button
-            type="button"
-            onClick={() => setToasts((current) => current.filter((item) => item.id !== toast.id))}
-            className="text-current/70 hover:text-current"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      ))}
-      </div>
     </>
   );
 }
-

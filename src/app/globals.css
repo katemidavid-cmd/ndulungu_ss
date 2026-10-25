@@ -34,3 +34,23 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@keyframes notification-progress {
+  from {
+    transform: scaleX(1);
+  }
+
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.notification-progress {
+  animation: notification-progress 5s linear forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notification-progress {
+    animation: none;
+  }
+}

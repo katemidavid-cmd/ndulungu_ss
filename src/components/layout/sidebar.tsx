@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import {
@@ -12,6 +13,7 @@ import {
   ClipboardList,
   Settings,
   X,
+  ChevronDown,
   type LucideIcon,
 } from "lucide-react";
 
@@ -21,43 +23,129 @@ type NavItem = {
   icon: LucideIcon;
 };
 
-const navByRole: Record<string, NavItem[]> = {
-  headmaster: [
-    { label: "Dashboard", href: "/dashboard/headmaster", icon: LayoutDashboard },
-    { label: "Teachers", href: "/dashboard/headmaster/teachers", icon: Users },
-    { label: "Students", href: "/dashboard/headmaster/students", icon: GraduationCap },
-    { label: "Classes", href: "/dashboard/headmaster/classes", icon: BookOpen },
-    { label: "Subjects", href: "/dashboard/headmaster/subjects", icon: ClipboardList },
-    { label: "Assignments", href: "/dashboard/headmaster/assignments", icon: ClipboardList },
-    { label: "Results", href: "/dashboard/headmaster/results", icon: FileText },
-    { label: "Settings", href: "/dashboard/headmaster/settings", icon: Settings },
-  ],
-  academic: [
-    { label: "Dashboard", href: "/dashboard/academic", icon: LayoutDashboard },
-    { label: "Teachers", href: "/dashboard/academic/teachers", icon: Users },
-    { label: "Classes", href: "/dashboard/academic/classes", icon: BookOpen },
-    { label: "Students", href: "/dashboard/academic/students", icon: GraduationCap },
-    { label: "Subjects", href: "/dashboard/academic/subjects", icon: ClipboardList },
-    { label: "Assignments", href: "/dashboard/academic/assignments", icon: ClipboardList },
-    { label: "Results", href: "/dashboard/academic/results", icon: FileText },
-  ],
-  teacher: [
-    { label: "Dashboard", href: "/dashboard/teacher", icon: LayoutDashboard },
-    { label: "My Classes", href: "/dashboard/teacher/classes", icon: BookOpen },
-    { label: "Enter Marks", href: "/dashboard/teacher/marks", icon: FileText },
-    { label: "Results", href: "/dashboard/teacher/results", icon: ClipboardList },
-  ],
+type NavGroup = {
+  label: string;
+  items: NavItem[];
+};
+
+type RoleNavigation = {
+  dashboard: NavItem;
+  groups: NavGroup[];
+};
+
+const navByRole: Record<string, RoleNavigation> = {
+  headmaster: {
+    dashboard: { label: "Dashboard", href: "/dashboard/headmaster", icon: LayoutDashboard },
+    groups: [
+      {
+        label: "People & Classes",
+        items: [
+          { label: "Teachers", href: "/dashboard/headmaster/teachers", icon: Users },
+          { label: "Student Registration", href: "/dashboard/headmaster/students", icon: GraduationCap },
+          { label: "Registered Students", href: "/dashboard/headmaster/registered-students", icon: Users },
+          { label: "Classes", href: "/dashboard/headmaster/classes", icon: BookOpen },
+        ],
+      },
+      {
+        label: "Academic Setup",
+        items: [
+          { label: "Subjects", href: "/dashboard/headmaster/subjects", icon: ClipboardList },
+          { label: "Assignments", href: "/dashboard/headmaster/assignments", icon: ClipboardList },
+        ],
+      },
+      {
+        label: "Examinations",
+        items: [
+          { label: "Exam Management", href: "/dashboard/headmaster/exams", icon: FileText },
+        ],
+      },
+      {
+        label: "School Settings",
+        items: [
+          { label: "Settings", href: "/dashboard/headmaster/settings", icon: Settings },
+        ],
+      },
+    ],
+  },
+  academic: {
+    dashboard: { label: "Dashboard", href: "/dashboard/academic", icon: LayoutDashboard },
+    groups: [
+      {
+        label: "People & Classes",
+        items: [
+          { label: "Teachers", href: "/dashboard/academic/teachers", icon: Users },
+          { label: "Student Registration", href: "/dashboard/academic/students", icon: GraduationCap },
+          { label: "Registered Students", href: "/dashboard/academic/registered-students", icon: Users },
+          { label: "Classes", href: "/dashboard/academic/classes", icon: BookOpen },
+        ],
+      },
+      {
+        label: "Academic Setup",
+        items: [
+          { label: "Subjects", href: "/dashboard/academic/subjects", icon: ClipboardList },
+          { label: "Assignments", href: "/dashboard/academic/assignments", icon: ClipboardList },
+        ],
+      },
+      {
+        label: "Examinations",
+        items: [
+          { label: "Exam Management", href: "/dashboard/academic/exams", icon: FileText },
+        ],
+      },
+      {
+        label: "School Settings",
+        items: [
+          { label: "Settings", href: "/dashboard/academic/settings", icon: Settings },
+        ],
+      },
+    ],
+  },
+  teacher: {
+    dashboard: { label: "Dashboard", href: "/dashboard/teacher", icon: LayoutDashboard },
+    groups: [
+      {
+        label: "Teaching",
+        items: [
+          { label: "My Classes", href: "/dashboard/teacher/classes", icon: BookOpen },
+          { label: "Enter Marks", href: "/dashboard/teacher/marks", icon: FileText },
+        ],
+      },
+      {
+        label: "Examinations",
+        items: [
+          { label: "My Exams", href: "/dashboard/teacher/exams", icon: ClipboardList },
+        ],
+      },
+    ],
+  },
 };
 
 export function Sidebar({
   role,
+  school,
 }: {
   role: "headmaster" | "academic" | "teacher";
+  school: { name: string; logoUrl: string | null; unionLogoUrl: string | null };
   user: { name: string; email: string; role: string };
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const items = navByRole[role] || [];
+  const [groupOverride, setGroupOverride] = useState<{
+    pathname: string;
+    group: string | null;
+  } | null>(null);
+  const navigation = navByRole[role];
+  const dashboard = navigation.dashboard;
+  const groups = navigation.groups;
+  const activeGroup = groups.find((group) =>
+    group.items.some(
+      (item) => pathname === item.href || pathname.startsWith(`${item.href}/`),
+    ),
+  );
+  const expandedGroup =
+    groupOverride?.pathname === pathname
+      ? groupOverride.group
+      : activeGroup?.label ?? null;
 
   useEffect(() => {
     const sync = () => setMobileOpen(document.body.classList.contains("mobile-nav-open"));
@@ -93,11 +181,37 @@ export function Sidebar({
         }`}
       >
         <div className="flex items-center justify-between border-b border-slate-800 p-5">
-          <div>
-            <h2 className="text-base font-semibold">Ndulungu Secondary School</h2>
-            <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-slate-400">
-              Results System
-            </p>
+          <div className="flex min-w-0 items-center gap-3">
+            {school.logoUrl ? (
+              <Image
+                src={school.logoUrl}
+                alt=""
+                width={44}
+                height={44}
+                unoptimized
+                className="h-11 w-11 shrink-0 rounded-lg bg-white object-contain p-1"
+              />
+            ) : (
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-sm font-bold text-white">
+                NSS
+              </div>
+            )}
+            <div className="min-w-0">
+              <h2 className="truncate text-sm font-semibold">{school.name}</h2>
+              <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-slate-400">
+                Exams System
+              </p>
+            </div>
+            {school.unionLogoUrl && (
+              <Image
+                src={school.unionLogoUrl}
+                alt="Union logo"
+                width={32}
+                height={32}
+                unoptimized
+                className="h-8 w-8 shrink-0 rounded-md bg-white object-contain p-0.5"
+              />
+            )}
           </div>
           <button
             type="button"
@@ -109,14 +223,13 @@ export function Sidebar({
           </button>
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto p-4">
-          {items.map((item) => {
-            const Icon = item.icon;
-            const active = pathname === item.href;
+        <nav className="flex-1 space-y-2 overflow-y-auto p-4">
+          {(() => {
+            const Icon = dashboard.icon;
+            const active = pathname === dashboard.href;
             return (
               <Link
-                key={item.href}
-                href={item.href}
+                href={dashboard.href}
                 onClick={closeMobileNav}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
                   active
@@ -125,10 +238,72 @@ export function Sidebar({
                 }`}
               >
                 <Icon className="h-4 w-4" />
-                {item.label}
+                {dashboard.label}
               </Link>
             );
-          })}
+          })()}
+
+          <div className="space-y-1 pt-2">
+            {groups.map((group) => {
+              const expanded = expandedGroup === group.label;
+              const groupActive = group.items.some(
+                (item) =>
+                  pathname === item.href || pathname.startsWith(`${item.href}/`),
+              );
+
+              return (
+                <section key={group.label}>
+                  <button
+                    type="button"
+                    aria-expanded={expanded}
+                    onClick={() =>
+                      setGroupOverride({
+                        pathname,
+                        group: expanded ? null : group.label,
+                      })
+                    }
+                    className={`flex min-h-10 w-full items-center justify-between rounded-lg px-3 text-left text-xs font-semibold uppercase tracking-wider transition-colors ${
+                      groupActive
+                        ? "text-blue-300"
+                        : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                    }`}
+                  >
+                    {group.label}
+                    <ChevronDown
+                      className={`h-4 w-4 transition-transform ${
+                        expanded ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+                  {expanded && (
+                    <div className="mt-1 space-y-1 pl-1">
+                      {group.items.map((item) => {
+                        const Icon = item.icon;
+                        const active =
+                          pathname === item.href ||
+                          pathname.startsWith(`${item.href}/`);
+                        return (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            onClick={closeMobileNav}
+                            className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+                              active
+                                ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20"
+                                : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                            }`}
+                          >
+                            <Icon className="h-4 w-4" />
+                            {item.label}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              );
+            })}
+          </div>
         </nav>
       </aside>
     </>

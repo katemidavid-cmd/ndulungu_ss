@@ -1,15 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, CheckCircle2, Download, FileUp, GraduationCap, Loader2, Plus, Search, Trash2, Users, X } from "lucide-react";
+import { Check, Download, FileUp, GraduationCap, Loader2, Plus, Search, Square, SquareCheck, Trash2, Users, X } from "lucide-react";
+import { LoadingIndicator } from "@/components/ui/loading-indicator";
 import Papa from "papaparse";
+import { notify } from "@/lib/notifications";
 import { createClient } from "@/lib/supabase/client";
-
-type Toast = {
-  id: number;
-  type: "success" | "error";
-  message: string;
-};
 
 type FormLevel = "Form I" | "Form II" | "Form III" | "Form IV";
 
@@ -40,6 +36,12 @@ type StudentForm = {
   last_name: string;
   sex: "M" | "F";
   admission_no: string;
+};
+
+type OptionalSubject = {
+  id: string;
+  name: string;
+  subject_code: string;
 };
 
 type CsvRow = {
@@ -111,19 +113,16 @@ export default function StudentsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Student | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const toastIdRef = useRef(0);
+  const [optionalSubjects, setOptionalSubjects] = useState<OptionalSubject[]>([]);
+  const [selectedOptionalSubjectId, setSelectedOptionalSubjectId] = useState("");
+  const [enrolledStudentIds, setEnrolledStudentIds] = useState<Set<string>>(new Set());
+  const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
+  const [bulkSaving, setBulkSaving] = useState(false);
 
   const showToast = useCallback((type: "success" | "error", message: string) => {
-    const id = toastIdRef.current++;
-    setToasts((current) => [...current, { id, type, message }]);
-    window.setTimeout(() => {
-      setToasts((current) => current.filter((toast) => toast.id !== id));
-    }, 5000);
+    notify(type, message);
   }, []);
 
   const load = useCallback(async () => {
@@ -148,13 +147,12 @@ export default function StudentsPage() {
         "Failed to load data. Make sure the supabase/classes.sql migration has been applied."
       );
     } else {
-      setError(null);
       setClasses((classesResult.data ?? []) as SchoolClass[]);
       setStudents((studentsResult.data ?? []) as Student[]);
     }
 
     setLoading(false);
-  }, [supabase]);
+  }, [supabase, showToast]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -194,6 +192,64 @@ export default function StudentsPage() {
 
   const [search, setSearch] = useState("");
 
+  useEffect(() => {
+    void Promise.resolve().then(() => setSelectedStudentIds(new Set()));
+  }, [effectiveClassId, selectedOptionalSubjectId]);
+
+  const loadOptionalSubjects = useCallback(async () => {
+    if (!effectiveClassId) {
+      setOptionalSubjects([]);
+      setSelectedOptionalSubjectId("");
+      setEnrolledStudentIds(new Set());
+      return;
+    }
+    try {
+      const res = await fetch(`/api/student-subjects?classId=${encodeURIComponent(effectiveClassId)}`);
+      const data = await res.json();
+      if (res.ok) {
+        const subjects = (data.subjects || []) as OptionalSubject[];
+        setOptionalSubjects(subjects);
+        if (!subjects.some((s) => s.id === selectedOptionalSubjectId)) {
+          setSelectedOptionalSubjectId(subjects[0]?.id || "");
+        }
+      } else {
+        setOptionalSubjects([]);
+        setSelectedOptionalSubjectId("");
+      }
+    } catch {
+      setOptionalSubjects([]);
+      setSelectedOptionalSubjectId("");
+    }
+  }, [effectiveClassId, selectedOptionalSubjectId]);
+
+  useEffect(() => {
+    void Promise.resolve().then(loadOptionalSubjects);
+  }, [loadOptionalSubjects]);
+
+  const loadEnrollmentStatus = useCallback(async () => {
+    if (!effectiveClassId || !selectedOptionalSubjectId) {
+      setEnrolledStudentIds(new Set());
+      return;
+    }
+    try {
+      const res = await fetch(
+        `/api/student-subjects/status?classId=${encodeURIComponent(effectiveClassId)}&subjectId=${encodeURIComponent(selectedOptionalSubjectId)}`
+      );
+      const data = await res.json();
+      if (res.ok) {
+        setEnrolledStudentIds(new Set((data.enrolledStudentIds || []) as string[]));
+      } else {
+        setEnrolledStudentIds(new Set());
+      }
+    } catch {
+      setEnrolledStudentIds(new Set());
+    }
+  }, [effectiveClassId, selectedOptionalSubjectId]);
+
+  useEffect(() => {
+    void Promise.resolve().then(loadEnrollmentStatus);
+  }, [loadEnrollmentStatus]);
+
   const filteredStudents = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return classStudents;
@@ -222,9 +278,6 @@ export default function StudentsPage() {
     }
 
     setSaving(true);
-    setError(null);
-    setNotice(null);
-
     const { error: insertError } = await supabase.from("students").insert({
       class_id: effectiveClassId,
       first_name: firstName,
@@ -266,9 +319,6 @@ export default function StudentsPage() {
     }
 
     setImporting(true);
-    setError(null);
-    setNotice(null);
-
     try {
       Papa.parse<CsvRow>(file, {
         header: true,
@@ -352,9 +402,6 @@ export default function StudentsPage() {
   async function confirmDeleteStudent() {
     if (!deleteTarget) return;
     setDeleting(true);
-    setError(null);
-    setNotice(null);
-
     const { error: deleteError } = await supabase
       .from("students")
       .delete()
@@ -372,19 +419,86 @@ export default function StudentsPage() {
     await load();
   }
 
+  function toggleStudentSelection(studentId: string) {
+    setSelectedStudentIds((current) => {
+      const next = new Set(current);
+      if (next.has(studentId)) {
+        next.delete(studentId);
+      } else {
+        next.add(studentId);
+      }
+      return next;
+    });
+  }
+
+  function toggleSelectAllVisible() {
+    const visibleIds = filteredStudents.map((s) => s.id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedStudentIds.has(id));
+    setSelectedStudentIds((current) => {
+      const next = new Set(current);
+      if (allSelected) {
+        for (const id of visibleIds) next.delete(id);
+      } else {
+        for (const id of visibleIds) next.add(id);
+      }
+      return next;
+    });
+  }
+
+  async function handleBulkOptionalAssignment(action: "assign" | "unassign") {
+    if (!selectedOptionalSubjectId || selectedStudentIds.size === 0) return;
+    setBulkSaving(true);
+    try {
+      const res = await fetch("/api/student-subjects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          studentIds: Array.from(selectedStudentIds),
+          subjectId: selectedOptionalSubjectId,
+          action,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast("error", data.error || "Failed to update optional subject assignments.");
+        return;
+      }
+      showToast(
+        "success",
+        action === "assign"
+          ? `${selectedStudentIds.size} student(s) assigned to optional subject.`
+          : `${selectedStudentIds.size} student(s) unassigned from optional subject.`
+      );
+      setSelectedStudentIds(new Set());
+      await loadEnrollmentStatus();
+    } catch (e: unknown) {
+      showToast("error", e instanceof Error ? e.message : String(e));
+    } finally {
+      setBulkSaving(false);
+    }
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="mx-auto w-full max-w-7xl space-y-6">
+      <header className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-blue-950 to-blue-800 p-5 text-white shadow-lg sm:p-7">
+        <div className="absolute -right-10 -top-20 h-56 w-56 rounded-full bg-white/5 blur-2xl" />
+        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Students</h2>
-          <p className="text-gray-600 mt-1">Register and manage student names by class and stream.</p>
+          <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-blue-100">
+            <GraduationCap className="h-3.5 w-3.5" />
+            Student administration
+          </span>
+          <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Student Registration</h2>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-blue-100/90 sm:text-base">
+            Register students in the correct form and stream, manually or from a CSV file.
+          </p>
         </div>
         {selectedClass && (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
             <button
               type="button"
               onClick={downloadTemplate}
-              className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-white"
+              className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 text-sm font-semibold text-white transition hover:bg-white/20"
             >
               <Download className="h-4 w-4" />
               Download Template
@@ -393,7 +507,7 @@ export default function StudentsPage() {
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={importing}
-              className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+              className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-bold text-blue-900 shadow-sm transition hover:bg-blue-50 disabled:opacity-50"
             >
               {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
               Register by CSV
@@ -407,64 +521,65 @@ export default function StudentsPage() {
             />
           </div>
         )}
-      </div>
-
-      {error && (
-        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{error}</span>
         </div>
-      )}
+      </header>
 
-      {notice && (
-        <div className="flex items-start gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{notice}</span>
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {FORM_LEVELS.map((form) => {
           const active = activeForm === form;
+          const formStreamCount = classes.filter(
+            (item) => item.form === form,
+          ).length;
+          const formStudentCount = students.filter((student) =>
+            classes.some(
+              (schoolClass) =>
+                schoolClass.id === student.class_id && schoolClass.form === form,
+            ),
+          ).length;
           return (
             <button
               key={form}
               type="button"
               onClick={() => {
                 setActiveForm(form);
-                setError(null);
-                setNotice(null);
                 setSelectedClassId("");
               }}
-              className={`rounded-lg border p-4 text-left transition-colors ${
+              className={`group rounded-2xl border p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md sm:p-5 ${
                 active
-                  ? "border-blue-600 bg-blue-600 text-white"
-                  : "border-gray-200 bg-white text-gray-900 hover:border-blue-300"
+                  ? "border-blue-700 bg-blue-700 text-white shadow-blue-950/10"
+                  : "border-slate-200 bg-white text-slate-900 hover:border-blue-300"
               }`}
             >
               <div className="flex items-center justify-between">
                 <span className="font-semibold">{form}</span>
-                <GraduationCap className="h-4 w-4 opacity-70" />
+                <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${active ? "bg-white/15 text-white" : "bg-blue-50 text-blue-700"}`}>
+                  <GraduationCap className="h-4 w-4" />
+                </span>
               </div>
-              <p className={`mt-2 text-xs ${active ? "text-blue-100" : "text-gray-500"}`}>
-                {formClasses.filter((item) => item.form === form).length} streams
+              <p className={`mt-3 text-xs ${active ? "text-blue-100" : "text-slate-500"}`}>
+                {formStreamCount} streams <span className="mx-1">·</span> {formStudentCount} students
               </p>
             </button>
           );
         })}
-      </div>
+      </section>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h3 className="text-lg font-semibold text-gray-900">Select Stream</h3>
-          <p className="mt-1 text-sm text-gray-600">{activeForm}</p>
-          {loading ? (
-            <div className="flex items-center gap-2 py-4 text-sm text-gray-500">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading...
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(15rem,0.8fr)_minmax(0,2fr)]">
+        <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-blue-700">Step 1</p>
+              <h3 className="mt-1 text-lg font-bold text-slate-950">Choose a stream</h3>
+              <p className="mt-1 text-sm text-slate-500">{activeForm}</p>
             </div>
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
+              <Users className="h-5 w-5" />
+            </span>
+          </div>
+          {loading ? (
+            <LoadingIndicator label="Loading classes..." className="py-4" />
           ) : formClasses.length ? (
-            <div className="mt-4 space-y-2">
+            <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-1">
               {formClasses.map((item) => {
                 const active = effectiveClassId === item.id;
                 return (
@@ -473,19 +588,17 @@ export default function StudentsPage() {
                     type="button"
                     onClick={() => {
                       setSelectedClassId(item.id);
-                      setError(null);
-                      setNotice(null);
                     }}
-                    className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left ${
+                    className={`flex min-h-12 w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left transition ${
                       active
-                        ? "border-blue-500 bg-blue-50"
-                        : "border-gray-200 bg-white hover:border-blue-300"
+                        ? "border-blue-500 bg-blue-50 ring-2 ring-blue-500/10"
+                        : "border-slate-200 bg-white hover:border-blue-300 hover:bg-slate-50"
                     }`}
                   >
                     <span className="text-sm font-medium text-gray-900">
                       {item.form} {item.stream}
                     </span>
-                    <span className="flex items-center gap-1 text-xs text-gray-500">
+                    <span className="flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
                       <Users className="h-3.5 w-3.5" />
                       {studentCountByClass.get(item.id) ?? 0}
                     </span>
@@ -494,31 +607,40 @@ export default function StudentsPage() {
               })}
             </div>
           ) : (
-            <p className="mt-4 text-sm text-gray-600">No streams found. Add streams under Classes first.</p>
+            <p className="mt-4 rounded-xl bg-amber-50 p-3 text-sm leading-5 text-amber-800">No streams found. Add streams under Classes first.</p>
           )}
-        </div>
+        </aside>
 
-        <div className="lg:col-span-2">
-          <div className="rounded-lg border border-gray-200 bg-white">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-6 py-4">
+        <div className="min-w-0">
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/80 px-4 py-4 sm:px-5">
               <div>
-                <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
-                  <GraduationCap className="h-5 w-5 text-blue-600" />
+                <p className="text-xs font-bold uppercase tracking-wider text-blue-700">Step 2</p>
+                <h3 className="mt-1 flex items-center gap-2 text-lg font-bold text-slate-950">
+                  <GraduationCap className="h-5 w-5 text-blue-700" />
                   {selectedClass ? `${selectedClass.form} ${selectedClass.stream}` : "Select a stream"}
                 </h3>
-                <p className="text-sm text-gray-600">
-                  {selectedClass ? `${classStudents.length} student(s)` : "Choose a stream from the left"}
+                <p className="mt-1 text-sm text-slate-500">
+                  {selectedClass ? `${classStudents.length} registered student(s)` : "Choose a stream to begin registration"}
                 </p>
               </div>
             </div>
 
             {selectedClass ? (
               <>
-                <form onSubmit={handleAddStudent} className="border-b border-gray-200 p-6">
-                  <h4 className="text-sm font-semibold text-gray-900">Add Student Manually</h4>
-                  <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <form onSubmit={handleAddStudent} className="border-b border-slate-200 p-4 sm:p-5">
+                  <div className="mb-4 flex items-start justify-between gap-3">
                     <div>
-                      <label htmlFor="first_name" className="mb-1 block text-xs font-medium text-gray-600">
+                      <h4 className="text-base font-bold text-slate-950">Add student manually</h4>
+                      <p className="mt-1 text-sm text-slate-500">Enter the student&apos;s basic details below.</p>
+                    </div>
+                    <span className="hidden rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 sm:inline-flex">
+                      Manual entry
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <div>
+                      <label htmlFor="first_name" className="mb-1.5 block text-xs font-semibold text-slate-700">
                         First name
                       </label>
                       <input
@@ -528,11 +650,11 @@ export default function StudentsPage() {
                           setStudentForm((current) => ({ ...current, first_name: event.target.value }))
                         }
                         required
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="min-h-11 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
                       />
                     </div>
                     <div>
-                      <label htmlFor="middle_name" className="mb-1 block text-xs font-medium text-gray-600">
+                      <label htmlFor="middle_name" className="mb-1.5 block text-xs font-semibold text-slate-700">
                         Middle name (optional)
                       </label>
                       <input
@@ -541,11 +663,11 @@ export default function StudentsPage() {
                         onChange={(event) =>
                           setStudentForm((current) => ({ ...current, middle_name: event.target.value }))
                         }
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="min-h-11 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
                       />
                     </div>
                     <div>
-                      <label htmlFor="last_name" className="mb-1 block text-xs font-medium text-gray-600">
+                      <label htmlFor="last_name" className="mb-1.5 block text-xs font-semibold text-slate-700">
                         Last name
                       </label>
                       <input
@@ -555,11 +677,11 @@ export default function StudentsPage() {
                           setStudentForm((current) => ({ ...current, last_name: event.target.value }))
                         }
                         required
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="min-h-11 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
                       />
                     </div>
                     <div>
-                      <label htmlFor="sex" className="mb-1 block text-xs font-medium text-gray-600">
+                      <label htmlFor="sex" className="mb-1.5 block text-xs font-semibold text-slate-700">
                         Gender
                       </label>
                       <select
@@ -568,14 +690,14 @@ export default function StudentsPage() {
                         onChange={(event) =>
                           setStudentForm((current) => ({ ...current, sex: event.target.value as "M" | "F" }))
                         }
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
                       >
                         <option value="M">Male</option>
                         <option value="F">Female</option>
                       </select>
                     </div>
                     <div>
-                      <label htmlFor="admission_no" className="mb-1 block text-xs font-medium text-gray-600">
+                      <label htmlFor="admission_no" className="mb-1.5 block text-xs font-semibold text-slate-700">
                         Admission number (optional)
                       </label>
                       <input
@@ -584,14 +706,14 @@ export default function StudentsPage() {
                         onChange={(event) =>
                           setStudentForm((current) => ({ ...current, admission_no: event.target.value }))
                         }
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="min-h-11 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
                       />
                     </div>
                     <div className="flex items-end">
                       <button
                         type="submit"
                         disabled={saving}
-                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+                        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-800 disabled:opacity-50"
                       >
                         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                         Add Student
@@ -600,59 +722,240 @@ export default function StudentsPage() {
                   </div>
                 </form>
 
-                <div className="overflow-x-auto">
-                  <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-6 py-3">
-                    <div className="relative w-full max-w-sm">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                      <input
-                        value={search}
-                        onChange={(event) => setSearch(event.target.value)}
-                        placeholder="Search by name or admission number"
-                        className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
+                <div>
+                  <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                    <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                      <div className="relative w-full max-w-sm">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                        <input
+                          value={search}
+                          onChange={(event) => setSearch(event.target.value)}
+                          placeholder="Search by name or admission number"
+                          className="min-h-11 w-full rounded-xl border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                        />
+                      </div>
+                      <p className="text-sm text-slate-500">
+                        Showing {filteredStudents.length} of {classStudents.length}
+                      </p>
                     </div>
-                    <p className="text-sm text-gray-500">
-                      Showing {filteredStudents.length} of {classStudents.length}
-                    </p>
                   </div>
-                  <table className="w-full">
+
+                  <div className="border-b border-slate-200 bg-slate-50/70 px-4 py-4 sm:px-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900">Bulk optional subject assignment</h4>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                          Select an optional subject for this form, tick students, then assign or unassign.
+                        </p>
+                      </div>
+                      {optionalSubjects.length === 0 && (
+                        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200">
+                          No optional subjects set for {selectedClass.form}
+                        </span>
+                      )}
+                    </div>
+                    {optionalSubjects.length > 0 && (
+                      <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <select
+                          value={selectedOptionalSubjectId}
+                          onChange={(event) => setSelectedOptionalSubjectId(event.target.value)}
+                          className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 sm:w-auto"
+                        >
+                          {optionalSubjects.map((subject) => (
+                            <option key={subject.id} value={subject.id}>
+                              {subject.name} ({subject.subject_code})
+                            </option>
+                          ))}
+                        </select>
+                        <span className="text-xs font-medium text-slate-500">
+                          {selectedStudentIds.size} student(s) selected
+                        </span>
+                        <div className="ml-auto flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void handleBulkOptionalAssignment("assign")}
+                            disabled={bulkSaving || selectedStudentIds.size === 0}
+                            className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            {bulkSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                            Assign selected
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleBulkOptionalAssignment("unassign")}
+                            disabled={bulkSaving || selectedStudentIds.size === 0}
+                            className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-white disabled:opacity-50"
+                          >
+                            {bulkSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                            Unassign selected
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="hidden overflow-x-auto md:block">
+                  <table className="w-full min-w-[760px]">
                     <thead>
                       <tr className="border-b border-gray-200">
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">
+                          <button
+                            type="button"
+                            onClick={toggleSelectAllVisible}
+                            className="inline-flex items-center gap-2"
+                            aria-label="Select all visible students"
+                          >
+                            {filteredStudents.length > 0 && filteredStudents.every((s) => selectedStudentIds.has(s.id)) ? (
+                              <SquareCheck className="h-4 w-4 text-blue-600" />
+                            ) : (
+                              <Square className="h-4 w-4 text-gray-400" />
+                            )}
+                            <span className="sr-only">Select all</span>
+                          </button>
+                        </th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">#</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Full name</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Gender</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Admission No.</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Optional status</th>
                         <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredStudents.map((student, index) => (
-                        <tr key={student.id} className="border-b border-gray-100 last:border-0">
-                          <td className="px-4 py-3 text-sm text-gray-500">{index + 1}</td>
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{student.full_name}</td>
-                          <td className="px-4 py-3 text-sm text-gray-700">{student.sex === "M" ? "Male" : "Female"}</td>
-                          <td className="px-4 py-3 text-sm text-gray-700">{student.admission_no || "-"}</td>
-                          <td className="px-4 py-3 text-right">
-                            <button
-                              type="button"
-                              onClick={() => setDeleteTarget(student)}
-                              className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                              aria-label={`Delete ${student.full_name}`}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {filteredStudents.map((student, index) => {
+                        const isEnrolled = enrolledStudentIds.has(student.id);
+                        const isSelected = selectedStudentIds.has(student.id);
+                        return (
+                          <tr key={student.id} className={`border-b border-gray-100 last:border-0 ${isSelected ? "bg-blue-50/40" : ""}`}>
+                            <td className="px-4 py-3">
+                              <button
+                                type="button"
+                                onClick={() => toggleStudentSelection(student.id)}
+                                aria-label={`Select ${student.full_name}`}
+                              >
+                                {isSelected ? (
+                                  <SquareCheck className="h-4 w-4 text-blue-600" />
+                                ) : (
+                                  <Square className="h-4 w-4 text-gray-400" />
+                                )}
+                              </button>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-500">{index + 1}</td>
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{student.full_name}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700">{student.sex === "M" ? "Male" : "Female"}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700">{student.admission_no || "-"}</td>
+                            <td className="px-4 py-3 text-sm">
+                              {selectedOptionalSubjectId ? (
+                                isEnrolled ? (
+                                  <span className="inline-flex items-center rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 ring-1 ring-green-200">
+                                    Assigned
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 ring-1 ring-gray-200">
+                                    Not assigned
+                                  </span>
+                                )
+                              ) : (
+                                <span className="text-xs text-gray-400">-</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => setDeleteTarget(student)}
+                                className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                                aria-label={`Delete ${student.full_name}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                       {!filteredStudents.length && (
                         <tr>
-                          <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-600">
+                          <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-600">
                             {classStudents.length ? "No students match your search." : "No students yet in this stream."}
                           </td>
                         </tr>
                       )}
                     </tbody>
                   </table>
+                  </div>
+
+                  <div className="divide-y divide-slate-100 md:hidden">
+                    {filteredStudents.map((student, index) => {
+                      const isEnrolled = enrolledStudentIds.has(student.id);
+                      const isSelected = selectedStudentIds.has(student.id);
+                      return (
+                        <article
+                          key={student.id}
+                          className={`space-y-3 p-4 ${isSelected ? "bg-blue-50/70" : "bg-white"}`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <button
+                              type="button"
+                              onClick={() => toggleStudentSelection(student.id)}
+                              aria-label={`${isSelected ? "Deselect" : "Select"} ${student.full_name}`}
+                              className="mt-0.5 shrink-0 rounded-md"
+                            >
+                              {isSelected ? (
+                                <SquareCheck className="h-5 w-5 text-blue-700" />
+                              ) : (
+                                <Square className="h-5 w-5 text-slate-400" />
+                              )}
+                            </button>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <h4 className="break-words text-sm font-bold text-slate-950">
+                                    {student.full_name}
+                                  </h4>
+                                  <p className="mt-1 text-xs text-slate-500">
+                                    {student.admission_no || "No admission number"}
+                                  </p>
+                                </div>
+                                <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                                  {student.sex === "M" ? "Male" : "Female"}
+                                </span>
+                              </div>
+                              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                                {selectedOptionalSubjectId ? (
+                                  isEnrolled ? (
+                                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                                      Optional subject assigned
+                                    </span>
+                                  ) : (
+                                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                                      Not assigned
+                                    </span>
+                                  )
+                                ) : (
+                                  <span className="text-xs text-slate-400">Student {index + 1}</span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setDeleteTarget(student)}
+                                  aria-label={`Delete ${student.full_name}`}
+                                  className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-rose-200 px-3 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </article>
+                      );
+                    })}
+                    {!filteredStudents.length && (
+                      <div className="px-4 py-10 text-center text-sm text-slate-500">
+                        {classStudents.length
+                          ? "No students match your search."
+                          : "No students are registered in this stream yet."}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </>
             ) : (
@@ -708,32 +1011,7 @@ export default function StudentsPage() {
         </div>
       )}
 
-      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
-        {toasts.map((toast) => (
-          <div
-            key={toast.id}
-            className={`flex max-w-sm items-start gap-2 rounded-lg border px-4 py-3 shadow-lg ${
-              toast.type === "success"
-                ? "border-green-200 bg-green-50 text-green-700"
-                : "border-red-200 bg-red-50 text-red-700"
-            }`}
-          >
-            {toast.type === "success" ? (
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-            ) : (
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            )}
-            <p className="flex-1 text-sm">{toast.message}</p>
-            <button
-              type="button"
-              onClick={() => setToasts((current) => current.filter((item) => item.id !== toast.id))}
-              className="text-current/70 hover:text-current"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        ))}
-      </div>
+
     </div>
   );
 }

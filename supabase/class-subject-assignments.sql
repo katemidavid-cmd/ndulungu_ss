@@ -174,6 +174,15 @@ set class_name = case upper((regexp_match(class_name, '^Form[[:space:]]+(IV|III|
 end
 where class_name ~* '^Form[[:space:]]+(IV|III|II|I)([[:space:]]|$)';
 
+update public.teaching_assignments
+set class_name = case (regexp_match(class_name, '^Form[[:space:]]+([1-4])([[:space:]]|$)', 'i'))[1]
+  when '1' then 'Form I'
+  when '2' then 'Form II'
+  when '3' then 'Form III'
+  when '4' then 'Form IV'
+end
+where class_name ~* '^Form[[:space:]]+[1-4]([[:space:]]|$)';
+
 delete from public.teaching_assignments older
 using public.teaching_assignments newer
 where older.teacher_id = newer.teacher_id

@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, BookOpen, CheckCircle2, Edit, Loader2, Plus, Save, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { BookOpen, Edit, Loader2, Plus, Save, Trash2, X } from "lucide-react";
+import { LoadingIndicator } from "@/components/ui/loading-indicator";
+import { notify } from "@/lib/notifications";
 import { createClient } from "@/lib/supabase/client";
 
 type Subject = {
@@ -12,12 +14,6 @@ type Subject = {
   created_at: string;
 };
 
-type Toast = {
-  id: number;
-  type: "success" | "error";
-  message: string;
-};
-
 export default function SubjectsPage() {
   const supabase = useMemo(() => createClient(), []);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -26,8 +22,6 @@ export default function SubjectsPage() {
   const [hasPractical, setHasPractical] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const toastIdRef = useRef(0);
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editSubjectCode, setEditSubjectCode] = useState("");
@@ -37,11 +31,7 @@ export default function SubjectsPage() {
   const [deleting, setDeleting] = useState(false);
 
   const showToast = useCallback((type: "success" | "error", message: string) => {
-    const id = toastIdRef.current++;
-    setToasts((current) => [...current, { id, type, message }]);
-    window.setTimeout(() => {
-      setToasts((current) => current.filter((toast) => toast.id !== id));
-    }, 5000);
+    notify(type, message);
   }, []);
 
   const load = useCallback(async () => {
@@ -257,10 +247,10 @@ export default function SubjectsPage() {
                 </div>
               </div>
               {loading ? (
-                <div className="flex items-center gap-2 p-5 text-sm text-gray-500 sm:p-6">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading...
-                </div>
+                <LoadingIndicator
+                  label="Loading subjects..."
+                  className="p-5 sm:p-6"
+                />
               ) : subjects.length ? (
                 <>
                 <div className="divide-y divide-gray-100 md:hidden">
@@ -521,32 +511,6 @@ export default function SubjectsPage() {
         </div>
       )}
 
-      <div className="fixed inset-x-3 bottom-3 z-50 flex flex-col gap-2 sm:inset-x-auto sm:bottom-4 sm:right-4">
-        {toasts.map((toast) => (
-          <div
-            key={toast.id}
-            className={`flex w-full max-w-sm items-start gap-2 rounded-lg border px-4 py-3 shadow-lg sm:w-auto ${
-              toast.type === "success"
-                ? "border-green-200 bg-green-50 text-green-700"
-                : "border-red-200 bg-red-50 text-red-700"
-            }`}
-          >
-            {toast.type === "success" ? (
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-            ) : (
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            )}
-            <p className="flex-1 text-sm">{toast.message}</p>
-            <button
-              type="button"
-              onClick={() => setToasts((current) => current.filter((item) => item.id !== toast.id))}
-              className="text-current/70 hover:text-current"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        ))}
-      </div>
     </>
   );
 }

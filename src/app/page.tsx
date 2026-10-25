@@ -8,7 +8,7 @@ export default function HomePage() {
     name: "Ndulungu Secondary School",
     alternateName: ["Ndulungu SS", "Ndulungu RMS", "Ndulungu R.M.S."],
     description:
-      "Tovuti rasmi ya Ndulungu Secondary School na mfumo wa usimamizi wa matokeo ya shule.",
+      "The official website of Ndulungu Secondary School and its school results management system.",
     url: siteUrl,
   };
 
@@ -29,7 +29,7 @@ export default function HomePage() {
             href="/login"
             className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2"
           >
-            Ingia kwenye mfumo
+            Sign in to the system
           </Link>
         </div>
       </header>
@@ -41,25 +41,25 @@ export default function HomePage() {
               Ndulungu SS · Ndulungu RMS
             </p>
             <h1 className="max-w-3xl text-4xl font-bold leading-tight tracking-tight text-slate-950 sm:text-5xl">
-              Karibu Ndulungu Secondary School
+              Welcome to Ndulungu Secondary School
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">
-              Hii ndiyo tovuti rasmi ya Ndulungu Secondary School, inayojulikana
-              pia kama Ndulungu SS. Ndulungu RMS ni mfumo wa shule wa kusimamia
-              wanafunzi, madarasa, masomo na matokeo ya kitaaluma.
+              This is the official website of Ndulungu Secondary School, also
+              known as Ndulungu SS. Ndulungu RMS is the school system for
+              managing students, classes, subjects, and academic results.
             </p>
             <div className="mt-9 flex flex-wrap gap-4">
               <Link
                 href="/login"
                 className="rounded-xl bg-blue-700 px-6 py-3 font-semibold text-white transition hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2"
               >
-                Fungua Ndulungu RMS
+                Open Ndulungu RMS
               </Link>
               <a
                 href="#kuhusu"
                 className="rounded-xl border border-slate-300 bg-white px-6 py-3 font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2"
               >
-                Kuhusu mfumo
+                About the system
               </a>
             </div>
           </div>
@@ -72,13 +72,12 @@ export default function HomePage() {
               Ndulungu Results Management System
             </h2>
             <p className="mt-4 leading-7 text-slate-600">
-              Mfumo wa kidijitali unaowasaidia watumishi wa shule kusimamia
-              taarifa za wanafunzi, madarasa, walimu, masomo na matokeo katika
-              sehemu moja salama.
+              A digital system that helps school staff securely manage student,
+              class, teacher, subject, and results information in one place.
             </p>
             <p className="mt-4 text-sm leading-6 text-slate-500">
-              Majina yanayotumika kutafuta shule hii ni Ndulungu Secondary
-              School, Ndulungu SS na Ndulungu RMS.
+              Search for the school using Ndulungu Secondary School, Ndulungu
+              SS, or Ndulungu RMS.
             </p>
           </aside>
         </div>

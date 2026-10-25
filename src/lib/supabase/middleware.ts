@@ -56,18 +56,32 @@ export async function updateSession(request: NextRequest) {
       .single();
 
     const role = profile?.role;
+    const sharedAccountPath =
+      path === "/dashboard/profile" || path === "/dashboard/change-password";
 
-    if (role === "headmaster" && !path.startsWith("/dashboard/headmaster")) {
+    if (
+      role === "headmaster" &&
+      !path.startsWith("/dashboard/headmaster") &&
+      !sharedAccountPath
+    ) {
       const url = request.nextUrl.clone();
       url.pathname = "/dashboard/headmaster";
       return NextResponse.redirect(url);
     }
-    if (role === "academic" && !path.startsWith("/dashboard/academic")) {
+    if (
+      role === "academic" &&
+      !path.startsWith("/dashboard/academic") &&
+      !sharedAccountPath
+    ) {
       const url = request.nextUrl.clone();
       url.pathname = "/dashboard/academic";
       return NextResponse.redirect(url);
     }
-    if (role === "teacher" && !path.startsWith("/dashboard/teacher")) {
+    if (
+      role === "teacher" &&
+      !path.startsWith("/dashboard/teacher") &&
+      !sharedAccountPath
+    ) {
       const url = request.nextUrl.clone();
       url.pathname = "/dashboard/teacher";
       return NextResponse.redirect(url);

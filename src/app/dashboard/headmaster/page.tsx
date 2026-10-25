@@ -1,10 +1,19 @@
 import { Users, GraduationCap, FileText, BookOpen } from "lucide-react";
+import { createClient } from "@/lib/supabase/server";
 
-export default function HeadmasterDashboard() {
+export default async function HeadmasterDashboard() {
+  const supabase = await createClient();
+
+  const [teachersRes, studentsRes, classesRes] = await Promise.all([
+    supabase.from("profiles").select("id", { count: "exact", head: true }).eq("role", "teacher"),
+    supabase.from("students").select("id", { count: "exact", head: true }),
+    supabase.from("classes").select("id", { count: "exact", head: true }),
+  ]);
+
   const stats = [
-    { label: "Teachers", value: "24", icon: Users, color: "bg-blue-500" },
-    { label: "Students", value: "856", icon: GraduationCap, color: "bg-green-500" },
-    { label: "Classes", value: "12", icon: BookOpen, color: "bg-purple-500" },
+    { label: "Teachers", value: String(teachersRes.count || 0), icon: Users, color: "bg-blue-500" },
+    { label: "Students", value: String(studentsRes.count || 0), icon: GraduationCap, color: "bg-green-500" },
+    { label: "Classes", value: String(classesRes.count || 0), icon: BookOpen, color: "bg-purple-500" },
     { label: "Results", value: "Published", icon: FileText, color: "bg-orange-500" },
   ];
 

@@ -26,6 +26,13 @@ canonical metadata, structured school data, `sitemap.xml`, and `robots.txt`.
 Google indexing and search ranking are determined by Google and cannot be
 guaranteed by the application alone.
 
+## School settings and user profiles
+
+Before using the headmaster school settings or editing profiles, run
+[`supabase/school-settings-profile.sql`](./supabase/school-settings-profile.sql)
+in the Supabase SQL Editor. It creates the school settings table, the public
+logo storage bucket, and the row/column permissions needed by the application.
+
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
 ## Learn More

@@ -2,21 +2,20 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Eye, EyeOff, GraduationCap, LockKeyhole, Mail } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, GraduationCap, LoaderCircle, LockKeyhole, Mail } from "lucide-react";
+import { notify } from "@/lib/notifications";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
     setLoading(true);
 
     const { error } = await supabase.auth.signInWithPassword({
@@ -27,7 +26,7 @@ export default function LoginPage() {
     setLoading(false);
 
     if (error) {
-      setError(error.message);
+      notify("error", error.message);
       return;
     }
 
@@ -148,21 +147,19 @@ export default function LoginPage() {
                   </div>
                 </div>
 
-                {error && (
-                  <div
-                    role="alert"
-                    className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-                  >
-                    {error}
-                  </div>
-                )}
-
                 <button
                   type="submit"
                   disabled={loading}
                   className="group flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {loading ? "Signing in..." : "Sign in"}
+                  {loading ? (
+                    <>
+                      <LoaderCircle className="h-4 w-4 animate-spin" />
+                      Signing in...
+                    </>
+                  ) : (
+                    "Sign in"
+                  )}
                   {!loading && (
                     <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                   )}

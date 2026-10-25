@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, BookOpen, Check, Loader2, Trash2, X } from "lucide-react";
+import { BookOpen, Loader2, Trash2 } from "lucide-react";
+import { LoadingIndicator } from "@/components/ui/loading-indicator";
+import { notify } from "@/lib/notifications";
 import { createClient } from "@/lib/supabase/client";
 
 const FORM_LEVELS = ["Form I", "Form II", "Form III", "Form IV"] as const;
@@ -21,12 +23,6 @@ interface Assignment {
   is_compulsory: boolean;
 }
 
-interface Toast {
-  id: number;
-  type: "success" | "error";
-  message: string;
-}
-
 export default function ClassSubjectAssignmentsPage() {
   const supabase = useMemo(() => createClient(), []);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -34,15 +30,10 @@ export default function ClassSubjectAssignmentsPage() {
   const [activeForm, setActiveForm] = useState<FormLevel>("Form I");
   const [loading, setLoading] = useState(true);
   const [savingSubjectId, setSavingSubjectId] = useState<string | null>(null);
-  const [toasts, setToasts] = useState<Toast[]>([]);
   const [pendingRemoval, setPendingRemoval] = useState<Subject | null>(null);
 
-  const showToast = useCallback((type: Toast["type"], message: string) => {
-    const id = Date.now() + Math.random();
-    setToasts((current) => [...current, { id, type, message }]);
-    window.setTimeout(() => {
-      setToasts((current) => current.filter((toast) => toast.id !== id));
-    }, 4500);
+  const showToast = useCallback((type: "success" | "error", message: string) => {
+    notify(type, message);
   }, []);
 
   const load = useCallback(async () => {
@@ -225,10 +216,10 @@ export default function ClassSubjectAssignmentsPage() {
               </span>
             </div>
             {loading ? (
-              <div className="flex items-center justify-center gap-2 px-4 py-12 text-sm text-gray-500">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading subjects...
-              </div>
+              <LoadingIndicator
+                label="Loading subjects..."
+                className="justify-center px-4 py-12"
+              />
             ) : subjects.length === 0 ? (
               <div className="m-4 rounded-lg border border-dashed border-gray-300 px-4 py-10 text-center sm:m-5">
                 <BookOpen className="mx-auto h-8 w-8 text-gray-300" />
@@ -370,36 +361,6 @@ export default function ClassSubjectAssignmentsPage() {
         </div>
       )}
 
-      <div className="pointer-events-none fixed inset-x-3 bottom-3 z-[60] flex flex-col gap-2 sm:inset-x-auto sm:bottom-4 sm:right-4">
-        {toasts.map((toast) => (
-          <div
-            key={toast.id}
-            role={toast.type === "error" ? "alert" : "status"}
-            className={`pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-xl border px-4 py-3 shadow-lg ${
-              toast.type === "error"
-                ? "border-red-200 bg-white text-red-800"
-                : "border-green-200 bg-white text-green-800"
-            }`}
-          >
-            {toast.type === "error" ? (
-              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
-            ) : (
-              <Check className="mt-0.5 h-5 w-5 shrink-0 text-green-600" />
-            )}
-            <p className="min-w-0 flex-1 break-words text-sm">{toast.message}</p>
-            <button
-              type="button"
-              onClick={() =>
-                setToasts((current) => current.filter((item) => item.id !== toast.id))
-              }
-              aria-label="Dismiss notification"
-              className="rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        ))}
-      </div>
     </>
   );
 }

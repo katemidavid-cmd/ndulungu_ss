@@ -1,7 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Edit, Plus, Trash2, X } from "lucide-react";
+import {
+  BookOpen,
+  Edit,
+  Mail,
+  Phone,
+  Plus,
+  Search,
+  Trash2,
+  UserRound,
+  Users,
+  X,
+} from "lucide-react";
+import { LoadingIndicator } from "@/components/ui/loading-indicator";
+import { notify } from "@/lib/notifications";
 
 interface Teacher {
   id: string;
@@ -34,21 +47,21 @@ interface TeachersPageProps {
 }
 
 const inputClassName =
-  "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20";
+  "min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10";
 const secondaryButtonClassName =
-  "inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50";
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50";
 
 export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [classSubjects, setClassSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
   const [showTeacherModal, setShowTeacherModal] = useState(false);
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
   const [editing, setEditing] = useState<Teacher | null>(null);
   const [assigningTeacher, setAssigningTeacher] = useState<Teacher | null>(null);
-  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [savingAssignments, setSavingAssignments] = useState(false);
   const [confirmTeacher, setConfirmTeacher] = useState<Teacher | null>(null);
   const [confirmAssignment, setConfirmAssignment] = useState<Assignment | null>(null);
   const [form, setForm] = useState({
@@ -60,10 +73,10 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
     sex: "M",
     phone: "",
   });
-  const [assignmentForm, setAssignmentForm] = useState({
-    class_name: "",
-    subject_name: "",
-  });
+  const [selectedForms, setSelectedForms] = useState<Set<string>>(new Set());
+  const [selectedAssignmentKeys, setSelectedAssignmentKeys] = useState<Set<string>>(
+    new Set(),
+  );
 
   const fetchAll = async () => {
     try {
@@ -85,9 +98,9 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
       setTeachers(data[0].teachers || []);
       setAssignments(data[1].assignments || []);
       setClassSubjects(data[2].assignments || []);
-      setError("");
     } catch (fetchError) {
-      setError(
+      notify(
+        "error",
         fetchError instanceof Error
           ? fetchError.message
           : "Unable to load teacher information.",
@@ -101,22 +114,11 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
     void Promise.resolve().then(fetchAll);
   }, []);
 
-  useEffect(() => {
-    if (!toast) return;
-
-    const timeoutId = window.setTimeout(() => {
-      setToast(null);
-    }, 5000);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [toast]);
-
   const showToast = (type: "success" | "error", message: string) => {
-    setToast({ type, message });
+    notify(type, message);
   };
 
   const openAddTeacher = () => {
-    setError("");
     setEditing(null);
     setForm({
       first_name: "",
@@ -131,7 +133,6 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
   };
 
   const openEditTeacher = (teacher: Teacher) => {
-    setError("");
     setEditing(teacher);
     setForm({
       first_name: teacher.first_name,
@@ -146,9 +147,9 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
   };
 
   const openAssignmentModal = (teacher: Teacher) => {
-    setError("");
     setAssigningTeacher(teacher);
-    setAssignmentForm({ class_name: "", subject_name: "" });
+    setSelectedForms(new Set());
+    setSelectedAssignmentKeys(new Set());
     setShowAssignmentModal(true);
   };
 
@@ -220,19 +221,35 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
   };
 
   const saveAssignment = async () => {
-    if (!assigningTeacher || !assignmentForm.class_name || !assignmentForm.subject_name) {
-      showToast("error", "Select both a class and a subject.");
+    if (!assigningTeacher || selectedAssignmentKeys.size === 0) {
+      showToast("error", "Select at least one class and subject.");
       return;
     }
 
+    const selectedAssignments = [...selectedAssignmentKeys].flatMap((key) => {
+      const separator = key.indexOf(":");
+      const form = key.slice(0, separator);
+      const subjectId = key.slice(separator + 1);
+      const subject = classSubjects.find(
+        (assignment) =>
+          assignment.form === form && assignment.subject_id === subjectId,
+      );
+      return subject ? [{ class_name: form, subject_name: subject.subject_name }] : [];
+    });
+    if (selectedAssignments.length !== selectedAssignmentKeys.size) {
+      showToast("error", "Some selected subjects are no longer available. Reload and try again.");
+      await fetchAll();
+      return;
+    }
+
+    setSavingAssignments(true);
     try {
       const response = await fetch("/api/teachers/assignments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           teacher_id: assigningTeacher.id,
-          class_name: assignmentForm.class_name,
-          subject_name: assignmentForm.subject_name,
+          assignments: selectedAssignments,
         }),
       });
       const data = await response.json();
@@ -240,13 +257,18 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
         throw new Error(data.error || "Unable to save the assignment.");
       }
       setShowAssignmentModal(false);
-      showToast("success", "Teacher assignment saved successfully.");
+      showToast(
+        "success",
+        `${data.created} teaching assignment(s) added for ${assigningTeacher.full_name}.`,
+      );
       await fetchAll();
     } catch (saveError) {
       showToast(
         "error",
         saveError instanceof Error ? saveError.message : "Unable to save the assignment.",
       );
+    } finally {
+      setSavingAssignments(false);
     }
   };
 
@@ -280,228 +302,269 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
 
   const getAssignments = (teacherId: string) =>
     assignments.filter((assignment) => assignment.teacher_id === teacherId);
-  const subjectsForSelectedForm = classSubjects.filter(
-    (assignment) => assignment.form === assignmentForm.class_name,
+  const visibleTeachers = teachers.filter((teacher) => {
+    const term = search.trim().toLowerCase();
+    return (
+      !term ||
+      teacher.full_name.toLowerCase().includes(term) ||
+      (teacher.email?.toLowerCase().includes(term) ?? false) ||
+      (teacher.phone?.toLowerCase().includes(term) ?? false)
+    );
+  });
+  const existingAssignmentKeys = new Set(
+    assignments
+      .filter((assignment) => assignment.teacher_id === assigningTeacher?.id)
+      .flatMap((assignment) => {
+        const subject = classSubjects.find(
+          (item) =>
+            item.form === assignment.class_name &&
+            item.subject_name === assignment.subject_name,
+        );
+        return subject ? [`${assignment.class_name}:${subject.subject_id}`] : [];
+      }),
   );
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Teachers</h2>
-          <p className="mt-1 text-sm text-gray-600">
-            {canManageTeachers
-              ? "Manage teacher accounts and class assignments."
-              : "View teachers and manage their class assignments."}
-          </p>
-        </div>
-        {canManageTeachers && (
-          <button
-            type="button"
-            onClick={openAddTeacher}
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-          >
-            <Plus className="h-4 w-4" />
-            Add Teacher
-          </button>
-        )}
-      </div>
-
-      {error && (
-        <div
-          role="alert"
-          className="flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-        >
-          <span>{error}</span>
-          <button
-            type="button"
-            onClick={() => setError("")}
-            aria-label="Dismiss error"
-            className="rounded p-0.5 hover:bg-red-100"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-
-      {toast && (
-        <div className="fixed right-4 top-20 z-50 flex max-w-sm items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
-          <div
-            className={`mt-0.5 h-2.5 w-2.5 rounded-full ${
-              toast.type === "success" ? "bg-emerald-500" : "bg-red-500"
-            }`}
-          />
-          <div className="flex-1">
-            <p className="text-sm font-medium text-slate-900">
-              {toast.type === "success" ? "Success" : "Error"}
+    <div className="mx-auto w-full max-w-7xl space-y-6">
+      <header className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-blue-950 to-blue-800 p-6 text-white shadow-lg sm:p-8">
+        <div className="absolute -right-12 -top-20 h-64 w-64 rounded-full bg-white/5 blur-2xl" />
+        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+          <div className="max-w-2xl">
+            <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-blue-100">
+              <Users className="h-3.5 w-3.5" />
+              Staff directory
+            </span>
+            <h2 className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">
+              Teachers
+            </h2>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-blue-100/90 sm:text-base">
+              {canManageTeachers
+                ? "Manage staff profiles, contact information, and teaching assignments."
+                : "Browse the teaching team and manage class subject assignments."}
             </p>
-            <p className="mt-0.5 text-sm text-slate-600">{toast.message}</p>
           </div>
-          <button
-            type="button"
-            onClick={() => setToast(null)}
-            className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-            aria-label="Close alert"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          {canManageTeachers && (
+            <button
+              type="button"
+              onClick={openAddTeacher}
+              className="inline-flex min-h-12 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-5 text-sm font-bold text-blue-900 shadow-sm transition hover:bg-blue-50 sm:w-auto"
+            >
+              <Plus className="h-4 w-4" />
+              Add teacher
+            </button>
+          )}
         </div>
-      )}
+      </header>
 
-      {loading ? (
-        <div className="rounded-lg border border-gray-200 bg-white p-8 text-center text-sm text-gray-600">
-          Loading teachers...
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <p className="text-sm text-slate-500">Total teachers</p>
+          <p className="mt-1 text-2xl font-bold text-slate-950">{teachers.length}</p>
         </div>
-      ) : (
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-0">
-              <thead className="border-b border-gray-200 bg-gray-50">
-                <tr>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Teacher
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Gender
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Email
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Phone
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Classes
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Subjects
-                  </th>
-                  <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {teachers.map((teacher) => (
-                  <tr key={teacher.id} className="align-top hover:bg-gray-50/70">
-                    <td className="px-5 py-4 text-sm font-medium text-gray-900">
-                      {teacher.full_name}
-                    </td>
-                    <td className="px-5 py-4 text-sm text-gray-700">
-                      {teacher.sex === "M" ? "Male" : "Female"}
-                    </td>
-                    <td className="px-5 py-4 text-sm text-gray-700">
-                      {teacher.email || "—"}
-                    </td>
-                    <td className="px-5 py-4 text-sm text-gray-700">
-                      {teacher.phone || "—"}
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="flex max-w-sm flex-wrap gap-2">
-                        {getAssignments(teacher.id).length === 0 ? (
-                          <span className="text-sm text-gray-500">No assignments</span>
-                        ) : (
-                          getAssignments(teacher.id).map((assignment) => (
-                            <span
-                              key={assignment.id}
-                              className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 py-1 pl-2.5 pr-1.5 text-xs font-medium text-blue-800"
-                            >
-                              {assignment.class_name}
-                              <button
-                                type="button"
-                                onClick={() => void deleteAssignment(assignment)}
-                                aria-label={`Remove ${assignment.class_name} ${assignment.subject_name} assignment`}
-                                title="Remove assignment"
-                                className="rounded-full p-0.5 text-blue-700 hover:bg-blue-100 hover:text-red-700"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </button>
-                            </span>
-                          ))
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="flex max-w-sm flex-wrap gap-2">
-                        {getAssignments(teacher.id).map((assignment) => (
-                          <span
-                            key={assignment.id}
-                            className="inline-flex items-center rounded-full bg-purple-50 px-2.5 py-1 text-xs font-medium text-purple-800"
-                          >
-                            {assignment.subject_name}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="flex flex-wrap justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openAssignmentModal(teacher)}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-md border border-green-200 bg-green-50 px-2.5 py-1.5 text-xs font-medium text-green-800 transition-colors hover:bg-green-100"
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                          Assign
-                        </button>
-                        {canManageTeachers && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => openEditTeacher(teacher)}
-                              className="inline-flex items-center justify-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-blue-800 transition-colors hover:bg-blue-100"
-                            >
-                              <Edit className="h-3.5 w-3.5" />
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void deleteTeacher(teacher)}
-                              className="inline-flex items-center justify-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-800 transition-colors hover:bg-red-100"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              Delete
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {teachers.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={7}
-                      className="px-5 py-12 text-center text-sm text-gray-500"
-                    >
-                      No teachers found.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <p className="text-sm text-slate-500">Teaching assignments</p>
+          <p className="mt-1 text-2xl font-bold text-slate-950">{assignments.length}</p>
+        </div>
+        <div className="col-span-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:col-span-1 sm:p-5">
+          <p className="text-sm text-slate-500">Showing</p>
+          <p className="mt-1 text-2xl font-bold text-slate-950">{visibleTeachers.length}</p>
+        </div>
+      </section>
+
+      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <label className="relative block max-w-2xl">
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search by teacher name, email, or phone"
+            className="min-h-12 w-full rounded-xl border border-slate-300 bg-slate-50 pl-10 pr-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
+          />
+        </label>
+
+        {loading ? (
+          <LoadingIndicator
+            label="Loading teacher information..."
+            className="rounded-2xl border border-slate-100 bg-slate-50 p-8"
+          />
+        ) : visibleTeachers.length === 0 ? (
+          <div className="flex flex-col items-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-14 text-center">
+            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-100 text-blue-800">
+              <Users className="h-7 w-7" />
+            </span>
+            <h3 className="mt-4 font-semibold text-slate-900">
+              {teachers.length === 0 ? "No teachers added yet" : "No matching teachers"}
+            </h3>
+            <p className="mt-1 text-sm text-slate-500">
+              {teachers.length === 0
+                ? "Add a teacher to build your school staff directory."
+                : "Try searching with a different name or contact detail."}
+            </p>
+            {canManageTeachers && teachers.length === 0 && (
+              <button
+                type="button"
+                onClick={openAddTeacher}
+                className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800"
+              >
+                <Plus className="h-4 w-4" />
+                Add first teacher
+              </button>
+            )}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-2">
+            {visibleTeachers.map((teacher) => {
+              const teacherAssignments = getAssignments(teacher.id);
+              const assignmentsByClass = new Map<string, Assignment[]>();
+              for (const assignment of teacherAssignments) {
+                const classAssignments =
+                  assignmentsByClass.get(assignment.class_name) ?? [];
+                classAssignments.push(assignment);
+                assignmentsByClass.set(assignment.class_name, classAssignments);
+              }
+              const initials = teacher.full_name
+                .split(/\s+/)
+                .slice(0, 2)
+                .map((part) => part[0])
+                .join("")
+                .toUpperCase();
+
+              return (
+                <article
+                  key={teacher.id}
+                  className="overflow-hidden rounded-2xl border border-slate-200 bg-white transition hover:border-blue-200 hover:shadow-md"
+                >
+                  <div className="flex flex-col gap-4 p-4 sm:p-5">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-700 to-indigo-600 text-sm font-bold text-white shadow-sm">
+                        {initials || <UserRound className="h-5 w-5" />}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="break-words text-base font-bold text-slate-950">
+                            {teacher.full_name}
+                          </h3>
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                            {teacher.sex === "M" ? "Male" : "Female"}
+                          </span>
+                        </div>
+                        <div className="mt-2 grid gap-1.5 text-sm text-slate-600 sm:grid-cols-2">
+                          <p className="flex min-w-0 items-center gap-2">
+                            <Mail className="h-4 w-4 shrink-0 text-slate-400" />
+                            <span className="truncate">{teacher.email || "No email provided"}</span>
+                          </p>
+                          <p className="flex items-center gap-2">
+                            <Phone className="h-4 w-4 shrink-0 text-slate-400" />
+                            <span>{teacher.phone || "No phone provided"}</span>
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                        <BookOpen className="h-3.5 w-3.5" />
+                        Teaching assignments
+                      </p>
+                      {assignmentsByClass.size ? (
+                        <div className="mt-2 space-y-2">
+                          {[...assignmentsByClass].map(([className, classAssignments]) => (
+                            <div
+                              key={className}
+                              className="flex flex-col gap-1.5 sm:flex-row sm:items-start"
+                            >
+                              <span className="shrink-0 pt-1 text-xs font-bold text-slate-700 sm:w-16">
+                                {className}
+                              </span>
+                              <div className="flex flex-wrap gap-1.5">
+                                {classAssignments.map((assignment) => (
+                                  <span
+                                    key={assignment.id}
+                                    className="inline-flex max-w-full items-center gap-1 rounded-lg border border-violet-100 bg-white py-1 pl-2.5 pr-1 text-xs font-medium text-violet-800"
+                                  >
+                                    <span className="truncate">
+                                      {assignment.subject_name}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => void deleteAssignment(assignment)}
+                                      aria-label={`Remove ${assignment.class_name} ${assignment.subject_name} assignment`}
+                                      title="Remove assignment"
+                                      className="rounded-md p-1 text-violet-600 hover:bg-rose-50 hover:text-rose-700"
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-xs text-slate-500">
+                          No teaching assignments yet.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-3">
+                      <button
+                        type="button"
+                        onClick={() => openAssignmentModal(teacher)}
+                        className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Assign classes & subjects
+                      </button>
+                      {canManageTeachers && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => openEditTeacher(teacher)}
+                            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-blue-800 transition hover:bg-blue-100"
+                          >
+                            <Edit className="h-4 w-4" />
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void deleteTeacher(teacher)}
+                            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-800 transition hover:bg-rose-100"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Delete
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {confirmTeacher && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/50 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900">Confirm deletion</h3>
-            <p className="mt-2 text-sm text-gray-600">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+          <div className="w-full max-w-md rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-2xl sm:p-6">
+            <h3 className="text-lg font-bold text-slate-950">Confirm deletion</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
               Are you sure you want to delete {confirmTeacher.full_name}?
             </p>
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 onClick={() => setConfirmTeacher(null)}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className={secondaryButtonClassName}
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={() => void confirmTeacherDelete()}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                className="min-h-11 rounded-xl bg-rose-600 px-4 text-sm font-semibold text-white hover:bg-rose-700"
               >
                 Delete
               </button>
@@ -511,24 +574,24 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
       )}
 
       {confirmAssignment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/50 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900">Remove assignment</h3>
-            <p className="mt-2 text-sm text-gray-600">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+          <div className="w-full max-w-md rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-2xl sm:p-6">
+            <h3 className="text-lg font-bold text-slate-950">Remove assignment</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
               Remove {confirmAssignment.class_name} - {confirmAssignment.subject_name} from this teacher?
             </p>
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 onClick={() => setConfirmAssignment(null)}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className={secondaryButtonClassName}
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={() => void confirmAssignmentDelete()}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                className="min-h-11 rounded-xl bg-rose-600 px-4 text-sm font-semibold text-white hover:bg-rose-700"
               >
                 Remove
               </button>
@@ -538,12 +601,15 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
       )}
 
       {showTeacherModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/50 p-4">
-          <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-              <h3 className="text-lg font-semibold text-gray-900">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+          <div className="flex max-h-[92dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-white shadow-xl sm:rounded-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 sm:px-6">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-blue-700">Staff directory</p>
+                <h3 className="mt-1 text-lg font-bold text-slate-950">
                 {editing ? "Edit Teacher" : "Add Teacher"}
-              </h3>
+                </h3>
+              </div>
               <button
                 type="button"
                 onClick={() => setShowTeacherModal(false)}
@@ -553,8 +619,8 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="space-y-4 overflow-y-auto p-6">
-              <div>
+            <div className="grid gap-4 overflow-y-auto p-5 sm:grid-cols-2 sm:p-6">
+              <div className="sm:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-gray-700">
                   First name *
                 </label>
@@ -645,7 +711,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
                 </div>
               )}
             </div>
-            <div className="flex flex-col-reverse gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4 sm:flex-row sm:justify-end">
+            <div className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
               <button
                 type="button"
                 onClick={() => setShowTeacherModal(false)}
@@ -656,7 +722,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
               <button
                 type="button"
                 onClick={() => void saveTeacher()}
-                className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white transition hover:bg-blue-800"
               >
                 Save Teacher
               </button>
@@ -666,84 +732,220 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
       )}
 
       {showAssignmentModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/50 p-4">
-          <div className="w-full max-w-lg overflow-hidden rounded-xl bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+          <div className="flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-xl sm:rounded-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 sm:px-6">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">
-                  Assign Class and Subject
+                <h3 className="text-lg font-bold text-slate-950">
+                  Assign Classes and Subjects
                 </h3>
-                <p className="mt-0.5 text-sm text-gray-600">
-                  Teacher: {assigningTeacher?.full_name}
+                <p className="mt-0.5 text-sm text-slate-500">
+                  Choose any number of forms and subjects for{" "}
+                  <span className="font-semibold text-slate-700">
+                    {assigningTeacher?.full_name}
+                  </span>
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowAssignmentModal(false)}
+                disabled={savingAssignments}
                 aria-label="Close"
-                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="space-y-4 p-6">
+            <div className="flex-1 space-y-5 overflow-y-auto p-5 sm:p-6">
+              <fieldset>
+                <legend className="text-sm font-semibold text-slate-800">
+                  1. Select class forms
+                </legend>
+                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {["Form I", "Form II", "Form III", "Form IV"].map((form) => {
+                    const checked = selectedForms.has(form);
+                    const subjectCount = classSubjects.filter(
+                      (subject) => subject.form === form,
+                    ).length;
+                    return (
+                      <label
+                        key={form}
+                        className={`flex min-h-14 cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+                          checked
+                            ? "border-blue-300 bg-blue-50 text-blue-900"
+                            : "border-slate-200 text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={savingAssignments || subjectCount === 0}
+                          onChange={(event) => {
+                            const selected = event.target.checked;
+                            setSelectedForms((current) => {
+                              const next = new Set(current);
+                              if (selected) next.add(form);
+                              else next.delete(form);
+                              return next;
+                            });
+                            if (!selected) {
+                              setSelectedAssignmentKeys((current) =>
+                                new Set(
+                                  [...current].filter(
+                                    (key) => !key.startsWith(`${form}:`),
+                                  ),
+                                ),
+                              );
+                            }
+                          }}
+                          className="h-4 w-4 rounded border-slate-300 text-blue-700 focus:ring-blue-500"
+                        />
+                        <span>
+                          {form}
+                          <span className="block text-[11px] font-normal text-slate-500">
+                            {subjectCount} subjects available
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </fieldset>
+
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Class *
-                </label>
-                <select
-                  value={assignmentForm.class_name}
-                  onChange={(event) =>
-                    setAssignmentForm({
-                      ...assignmentForm,
-                      class_name: event.target.value,
-                      subject_name: "",
-                    })
-                  }
-                  className={inputClassName}
-                >
-                  <option value="">Select a class</option>
-                  {["Form I", "Form II", "Form III", "Form IV"].map((form) => (
-                    <option key={form} value={form}>
-                      {form}
-                    </option>
-                  ))}
-                </select>
+                <h4 className="text-sm font-semibold text-slate-800">
+                  2. Select subjects for each form
+                </h4>
+                {selectedForms.size === 0 ? (
+                  <p className="mt-2 rounded-xl border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-500">
+                    Choose one or more forms above to see their available subjects.
+                  </p>
+                ) : (
+                  <div className="mt-3 space-y-4">
+                    {["Form I", "Form II", "Form III", "Form IV"]
+                      .filter((form) => selectedForms.has(form))
+                      .map((form) => {
+                        const formSubjects = classSubjects.filter(
+                          (subject) => subject.form === form,
+                        );
+                        const availableSubjects = formSubjects.filter(
+                          (subject) =>
+                            !existingAssignmentKeys.has(
+                              `${form}:${subject.subject_id}`,
+                            ),
+                        );
+                        const allSelected =
+                          availableSubjects.length > 0 &&
+                          availableSubjects.every((subject) =>
+                            selectedAssignmentKeys.has(
+                              `${form}:${subject.subject_id}`,
+                            ),
+                          );
+                        return (
+                          <section
+                            key={form}
+                            className="rounded-xl border border-slate-200 p-3 sm:p-4"
+                          >
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                              <h5 className="text-sm font-bold text-slate-900">
+                                {form}
+                              </h5>
+                              <button
+                                type="button"
+                                disabled={
+                                  savingAssignments ||
+                                  availableSubjects.length === 0
+                                }
+                                onClick={() =>
+                                  setSelectedAssignmentKeys((current) => {
+                                    const next = new Set(current);
+                                    for (const subject of availableSubjects) {
+                                      const key = `${form}:${subject.subject_id}`;
+                                      if (allSelected) next.delete(key);
+                                      else next.add(key);
+                                    }
+                                    return next;
+                                  })
+                                }
+                                className="text-xs font-semibold text-blue-700 hover:text-blue-900 disabled:opacity-50"
+                              >
+                                {allSelected ? "Clear selections" : "Select all"}
+                              </button>
+                            </div>
+                            {formSubjects.length === 0 ? (
+                              <p className="text-sm text-amber-700">
+                                No subjects are assigned to this form yet.
+                              </p>
+                            ) : (
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                {formSubjects.map((subject) => {
+                                  const key = `${form}:${subject.subject_id}`;
+                                  const alreadyAssigned =
+                                    existingAssignmentKeys.has(key);
+                                  return (
+                                    <label
+                                      key={key}
+                                      className={`flex min-h-12 items-center gap-3 rounded-lg border px-3 py-2 text-sm ${
+                                        alreadyAssigned
+                                          ? "border-emerald-100 bg-emerald-50/70"
+                                          : "border-slate-100 hover:bg-slate-50"
+                                      }`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={
+                                          alreadyAssigned ||
+                                          selectedAssignmentKeys.has(key)
+                                        }
+                                        disabled={
+                                          savingAssignments || alreadyAssigned
+                                        }
+                                        onChange={(event) =>
+                                          setSelectedAssignmentKeys((current) => {
+                                            const next = new Set(current);
+                                            if (event.target.checked) next.add(key);
+                                            else next.delete(key);
+                                            return next;
+                                          })
+                                        }
+                                        className="h-4 w-4 rounded border-slate-300 text-blue-700 focus:ring-blue-500"
+                                      />
+                                      <span className="min-w-0 flex-1">
+                                        <span className="block truncate font-medium text-slate-800">
+                                          {subject.subject_name}
+                                        </span>
+                                        <span className="text-xs text-slate-500">
+                                          {subject.subject_code || "No code"}
+                                        </span>
+                                      </span>
+                                      {alreadyAssigned && (
+                                        <span className="shrink-0 text-[11px] font-semibold text-emerald-700">
+                                          Assigned
+                                        </span>
+                                      )}
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </section>
+                        );
+                      })}
+                  </div>
+                )}
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Subject *
-                </label>
-                <select
-                  value={assignmentForm.subject_name}
-                  disabled={!assignmentForm.class_name || subjectsForSelectedForm.length === 0}
-                  onChange={(event) =>
-                    setAssignmentForm({
-                      ...assignmentForm,
-                      subject_name: event.target.value,
-                    })
-                  }
-                  className={inputClassName}
-                >
-                  <option value="">
-                    {!assignmentForm.class_name
-                      ? "Select a class first"
-                      : subjectsForSelectedForm.length
-                        ? "Select a subject"
-                        : "No subjects assigned to this class"}
-                  </option>
-                  {subjectsForSelectedForm.map((subject) => (
-                    <option key={subject.id} value={subject.subject_name}>
-                      {subject.subject_name} ({subject.subject_code})
-                    </option>
-                  ))}
-                </select>
-              </div>
+
+              <p className="rounded-lg bg-blue-50 px-3 py-2.5 text-sm text-blue-900">
+                {selectedAssignmentKeys.size} new class-subject assignment(s)
+                selected. Teachers can have multiple subjects in one form and
+                different subjects across forms.
+              </p>
             </div>
-            <div className="flex flex-col-reverse gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4 sm:flex-row sm:justify-end">
+            <div className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
               <button
                 type="button"
                 onClick={() => setShowAssignmentModal(false)}
+                disabled={savingAssignments}
                 className={secondaryButtonClassName}
               >
                 Cancel
@@ -751,10 +953,15 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
               <button
                 type="button"
                 onClick={() => void saveAssignment()}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700"
+                disabled={savingAssignments || selectedAssignmentKeys.size === 0}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <Plus className="h-4 w-4" />
-                Add Assignment
+                {savingAssignments ? (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                ) : (
+                  <Plus className="h-4 w-4" />
+                )}
+                {savingAssignments ? "Saving..." : "Save assignments"}
               </button>
             </div>
           </div>

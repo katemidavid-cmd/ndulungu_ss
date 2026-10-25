@@ -55,17 +55,57 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const body = await request.json();
-  const { teacher_id, class_name, subject_name } = body;
-
-  if (!teacher_id || !class_name || !subject_name) {
-    return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  let body: {
+    teacher_id?: unknown;
+    assignments?: unknown;
+    class_name?: unknown;
+    subject_name?: unknown;
+  };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const validForms = ["Form I", "Form II", "Form III", "Form IV"];
-  if (!validForms.includes(class_name)) {
+  const teacherId = typeof body.teacher_id === "string" ? body.teacher_id : "";
+  const rawAssignments = Array.isArray(body.assignments)
+    ? body.assignments
+    : [{ class_name: body.class_name, subject_name: body.subject_name }];
+  const validForms = new Set(["Form I", "Form II", "Form III", "Form IV"]);
+  if (!teacherId || rawAssignments.length === 0 || rawAssignments.length > 100) {
     return NextResponse.json(
-      { error: "Select a form, not an individual stream." },
+      { error: "Select a teacher and between 1 and 100 class-subject assignments." },
+      { status: 400 },
+    );
+  }
+  const requestedAssignments: { class_name: string; subject_name: string }[] = [];
+  for (const item of rawAssignments) {
+    if (
+      !item ||
+      typeof item !== "object" ||
+      !("class_name" in item) ||
+      !("subject_name" in item) ||
+      typeof item.class_name !== "string" ||
+      typeof item.subject_name !== "string" ||
+      !validForms.has(item.class_name) ||
+      !item.subject_name.trim()
+    ) {
+      return NextResponse.json(
+        { error: "Each assignment must include a valid form and subject." },
+        { status: 400 },
+      );
+    }
+    requestedAssignments.push({
+      class_name: item.class_name,
+      subject_name: item.subject_name.trim(),
+    });
+  }
+  const requestedKeys = requestedAssignments.map(
+    (assignment) => `${assignment.class_name}:${assignment.subject_name.toLowerCase()}`,
+  );
+  if (new Set(requestedKeys).size !== requestedKeys.length) {
+    return NextResponse.json(
+      { error: "Duplicate class and subject selections are not allowed." },
       { status: 400 },
     );
   }
@@ -74,7 +114,7 @@ export async function POST(request: Request) {
   const { data: teacher, error: teacherError } = await adminSupabase
     .from("profiles")
     .select("id")
-    .eq("id", teacher_id)
+    .eq("id", teacherId)
     .eq("role", "teacher")
     .maybeSingle();
 
@@ -85,45 +125,82 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Select a valid teacher." }, { status: 400 });
   }
 
+  const forms = [...new Set(requestedAssignments.map((assignment) => assignment.class_name))];
   const { data: classSubjects, error: classSubjectsError } = await adminSupabase
     .from("class_subject_assignments")
-    .select("subject_id")
-    .eq("form", class_name);
+    .select("form, subject_id")
+    .in("form", forms);
 
   if (classSubjectsError) {
     return NextResponse.json({ error: classSubjectsError.message }, { status: 500 });
   }
 
-  const subjectIds = (classSubjects || []).map((assignment) => assignment.subject_id);
-  if (!subjectIds.length) {
-    return NextResponse.json(
-      { error: `No subjects are assigned to ${class_name}.` },
-      { status: 400 },
-    );
-  }
-
-  const { data: subject, error: subjectError } = await adminSupabase
+  const subjectIds = [...new Set((classSubjects || []).map((assignment) => assignment.subject_id))];
+  const { data: subjects, error: subjectError } = await adminSupabase
     .from("subjects")
-    .select("name")
-    .eq("name", subject_name)
-    .in("id", subjectIds)
-    .maybeSingle();
+    .select("id, name")
+    .in("id", subjectIds.length ? subjectIds : ["00000000-0000-0000-0000-000000000000"]);
 
   if (subjectError) {
     return NextResponse.json({ error: subjectError.message }, { status: 500 });
   }
-  if (!subject) {
+  const subjectNameById = new Map((subjects ?? []).map((subject) => [subject.id, subject.name]));
+  const eligibleKeys = new Set(
+    (classSubjects ?? []).flatMap((assignment) => {
+      const subjectName = subjectNameById.get(assignment.subject_id);
+      return subjectName
+        ? [`${assignment.form}:${subjectName.toLowerCase()}`]
+        : [];
+    }),
+  );
+  const invalidAssignment = requestedAssignments.find(
+    (assignment) =>
+      !eligibleKeys.has(`${assignment.class_name}:${assignment.subject_name.toLowerCase()}`),
+  );
+  if (invalidAssignment) {
     return NextResponse.json(
-      { error: `That subject is not assigned to ${class_name}.` },
+      {
+        error: `${invalidAssignment.subject_name} is not assigned to ${invalidAssignment.class_name}.`,
+      },
       { status: 400 },
     );
   }
 
-  const { error } = await adminSupabase.from("teaching_assignments").insert({
-    teacher_id,
-    class_name,
-    subject_name: subject.name,
-  });
+  const { data: existingAssignments, error: existingError } = await adminSupabase
+    .from("teaching_assignments")
+    .select("class_name, subject_name")
+    .eq("teacher_id", teacherId);
+  if (existingError) {
+    return NextResponse.json({ error: existingError.message }, { status: 500 });
+  }
+  const existingKeys = new Set(
+    (existingAssignments ?? []).map(
+      (assignment) =>
+        `${assignment.class_name}:${assignment.subject_name.toLowerCase()}`,
+    ),
+  );
+  const newAssignments = requestedAssignments
+    .filter(
+      (assignment) =>
+        !existingKeys.has(
+          `${assignment.class_name}:${assignment.subject_name.toLowerCase()}`,
+        ),
+    )
+    .map((assignment) => ({
+      teacher_id: teacherId,
+      class_name: assignment.class_name,
+      subject_name: assignment.subject_name,
+    }));
+  if (newAssignments.length === 0) {
+    return NextResponse.json(
+      { error: "All selected class and subject assignments already exist." },
+      { status: 409 },
+    );
+  }
+
+  const { error } = await adminSupabase
+    .from("teaching_assignments")
+    .insert(newAssignments);
 
   if (error) {
     return NextResponse.json(
@@ -137,5 +214,5 @@ export async function POST(request: Request) {
     );
   }
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, created: newAssignments.length });
 }
