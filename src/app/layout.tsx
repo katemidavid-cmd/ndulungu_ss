@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { NotificationViewport } from "@/components/ui/notification-viewport";
+import { NavigationFeedback } from "@/components/ui/navigation-feedback";
 import { siteUrl } from "@/lib/site-url";
 import "./globals.css";
 
@@ -47,6 +48,7 @@ export default function RootLayout({
     <html lang="en" className="h-full antialiased">
       <body className="min-h-full flex flex-col">
         {children}
+        <NavigationFeedback />
         <NotificationViewport />
       </body>
     </html>

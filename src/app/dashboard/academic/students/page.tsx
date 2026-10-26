@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Download, FileUp, GraduationCap, Loader2, Plus, Search, Square, SquareCheck, Trash2, Users, X } from "lucide-react";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
+import { Pagination } from "@/components/ui/pagination";
 import Papa from "papaparse";
 import { notify } from "@/lib/notifications";
 import { createClient } from "@/lib/supabase/client";
@@ -111,6 +112,7 @@ export default function StudentsPage() {
   const [selectedClassId, setSelectedClassId] = useState("");
   const [studentForm, setStudentForm] = useState<StudentForm>(EMPTY_STUDENT);
   const [loading, setLoading] = useState(true);
+  const [studentsLoading, setStudentsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Student | null>(null);
@@ -120,35 +122,33 @@ export default function StudentsPage() {
   const [enrolledStudentIds, setEnrolledStudentIds] = useState<Set<string>>(new Set());
   const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState(0);
+  const [classCounts, setClassCounts] = useState<Record<string, number>>({});
+  const [formCounts, setFormCounts] = useState<Record<string, number>>({});
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const showToast = useCallback((type: "success" | "error", message: string) => {
     notify(type, message);
   }, []);
 
-  const load = useCallback(async () => {
-    const [classesResult, studentsResult] = await Promise.all([
-      supabase
-        .from("classes")
-        .select("id, form, stream, created_at")
-        .order("form")
-        .order("stream"),
-      supabase
-        .from("students")
-        .select(
-          "id, class_id, first_name, middle_name, last_name, full_name, sex, admission_no, created_at"
-        )
-        .order("last_name")
-        .order("first_name"),
-    ]);
+  const loadClasses = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("classes")
+      .select("id, form, stream, created_at")
+      .order("form")
+      .order("stream");
 
-    if (classesResult.error || studentsResult.error) {
+    if (error) {
       showToast(
         "error",
-        "Failed to load data. Make sure the supabase/classes.sql migration has been applied."
+        "Failed to load classes. Make sure the supabase/classes.sql migration has been applied."
       );
     } else {
-      setClasses((classesResult.data ?? []) as SchoolClass[]);
-      setStudents((studentsResult.data ?? []) as Student[]);
+      setClasses((data ?? []) as SchoolClass[]);
     }
 
     setLoading(false);
@@ -156,8 +156,8 @@ export default function StudentsPage() {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
-  }, [load]);
+    void loadClasses();
+  }, [loadClasses]);
 
   const formClasses = useMemo(
     () =>
@@ -171,26 +171,77 @@ export default function StudentsPage() {
     ? selectedClassId
     : formClasses[0]?.id ?? "";
 
-  const studentCountByClass = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const student of students) {
-      map.set(student.class_id, (map.get(student.class_id) ?? 0) + 1);
-    }
-    return map;
-  }, [students]);
-
   const selectedClass =
     classes.find((item) => item.id === effectiveClassId) ?? null;
 
-  const classStudents = useMemo(
-    () =>
-      students
-        .filter((item) => item.class_id === effectiveClassId)
-        .sort((a, b) => a.full_name.localeCompare(b.full_name)),
-    [students, effectiveClassId]
-  );
+  const classTotal = classCounts[effectiveClassId] ?? 0;
 
-  const [search, setSearch] = useState("");
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPage(1);
+  }, [effectiveClassId, debouncedSearch, pageSize]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (page > totalPages) setPage(totalPages);
+  }, [page, total, pageSize]);
+
+  const loadStudents = useCallback(async () => {
+    if (!effectiveClassId) {
+      setStudents([]);
+      setTotal(0);
+      return;
+    }
+
+    setStudentsLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: String(pageSize),
+        classId: effectiveClassId,
+        includeCounts: "1",
+      });
+      if (debouncedSearch) params.set("search", debouncedSearch);
+
+      const response = await fetch(`/api/students?${params.toString()}`);
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Unable to load students.");
+      }
+
+      setStudents((data.students ?? []) as Student[]);
+      setTotal(data.total ?? 0);
+      setClassCounts(
+        (data.classCounts ?? {}) as Record<string, number>
+      );
+      setFormCounts((data.formCounts ?? {}) as Record<string, number>);
+    } catch (error) {
+      showToast(
+        "error",
+        error instanceof Error ? error.message : "Unable to load students."
+      );
+    } finally {
+      setStudentsLoading(false);
+    }
+  }, [debouncedSearch, effectiveClassId, page, pageSize, showToast]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadStudents();
+  }, [loadStudents, refreshKey]);
+
+  const refreshStudents = useCallback(() => {
+    setPage(1);
+    setRefreshKey((current) => current + 1);
+  }, []);
 
   useEffect(() => {
     void Promise.resolve().then(() => setSelectedStudentIds(new Set()));
@@ -250,16 +301,7 @@ export default function StudentsPage() {
     void Promise.resolve().then(loadEnrollmentStatus);
   }, [loadEnrollmentStatus]);
 
-  const filteredStudents = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    if (!term) return classStudents;
-    return classStudents.filter((student) => {
-      return (
-        student.full_name.toLowerCase().includes(term) ||
-        (student.admission_no?.toLowerCase().includes(term) ?? false)
-      );
-    });
-  }, [classStudents, search]);
+  const filteredStudents = students;
 
   async function handleAddStudent(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -303,7 +345,7 @@ export default function StudentsPage() {
       sex: current.sex,
     }));
     showToast("success", "Student registered successfully.");
-    await load();
+    refreshStudents();
     setSaving(false);
   }
 
@@ -385,7 +427,7 @@ export default function StudentsPage() {
           }
 
           showToast("success", `${payload.length} student(s) imported successfully.`);
-          await load();
+          refreshStudents();
           setImporting(false);
         },
         error: (parseError) => {
@@ -416,7 +458,7 @@ export default function StudentsPage() {
 
     showToast("success", `${deleteTarget.full_name} was deleted.`);
     setDeleteTarget(null);
-    await load();
+    refreshStudents();
   }
 
   function toggleStudentSelection(studentId: string) {
@@ -480,15 +522,15 @@ export default function StudentsPage() {
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6">
-      <header className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-blue-950 to-blue-800 p-5 text-white shadow-lg sm:p-7">
+      <header className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-950 via-blue-950 to-blue-800 p-4 text-white shadow-lg sm:p-5">
         <div className="absolute -right-10 -top-20 h-56 w-56 rounded-full bg-white/5 blur-2xl" />
-        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+        <div className="relative flex flex-col items-start gap-4">
         <div>
           <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-blue-100">
             <GraduationCap className="h-3.5 w-3.5" />
             Student administration
           </span>
-          <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Student Registration</h2>
+          <h2 className="mt-2 text-xl font-bold tracking-tight sm:text-2xl">Student Registration</h2>
           <p className="mt-2 max-w-xl text-sm leading-6 text-blue-100/90 sm:text-base">
             Register students in the correct form and stream, manually or from a CSV file.
           </p>
@@ -530,12 +572,7 @@ export default function StudentsPage() {
           const formStreamCount = classes.filter(
             (item) => item.form === form,
           ).length;
-          const formStudentCount = students.filter((student) =>
-            classes.some(
-              (schoolClass) =>
-                schoolClass.id === student.class_id && schoolClass.form === form,
-            ),
-          ).length;
+          const formStudentCount = formCounts[form] ?? 0;
           return (
             <button
               key={form}
@@ -564,8 +601,8 @@ export default function StudentsPage() {
         })}
       </section>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(15rem,0.8fr)_minmax(0,2fr)]">
-        <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="space-y-5">
+        <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-blue-700">Step 1</p>
@@ -579,7 +616,7 @@ export default function StudentsPage() {
           {loading ? (
             <LoadingIndicator label="Loading classes..." className="py-4" />
           ) : formClasses.length ? (
-            <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-1">
+            <div className="mt-4 grid max-h-40 grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3 xl:grid-cols-4">
               {formClasses.map((item) => {
                 const active = effectiveClassId === item.id;
                 return (
@@ -600,7 +637,7 @@ export default function StudentsPage() {
                     </span>
                     <span className="flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
                       <Users className="h-3.5 w-3.5" />
-                      {studentCountByClass.get(item.id) ?? 0}
+                      {classCounts[item.id] ?? 0}
                     </span>
                   </button>
                 );
@@ -621,7 +658,7 @@ export default function StudentsPage() {
                   {selectedClass ? `${selectedClass.form} ${selectedClass.stream}` : "Select a stream"}
                 </h3>
                 <p className="mt-1 text-sm text-slate-500">
-                  {selectedClass ? `${classStudents.length} registered student(s)` : "Choose a stream to begin registration"}
+                  {selectedClass ? `${classTotal} registered student(s)` : "Choose a stream to begin registration"}
                 </p>
               </div>
             </div>
@@ -735,7 +772,7 @@ export default function StudentsPage() {
                         />
                       </div>
                       <p className="text-sm text-slate-500">
-                        Showing {filteredStudents.length} of {classStudents.length}
+                        Showing {filteredStudents.length} of {total}
                       </p>
                     </div>
                   </div>
@@ -794,9 +831,9 @@ export default function StudentsPage() {
                     )}
                   </div>
 
-                  <div className="hidden overflow-x-auto md:block">
+                  <div className="hidden max-h-[60vh] overflow-auto md:block">
                   <table className="w-full min-w-[760px]">
-                    <thead>
+                    <thead className="sticky top-0 z-10 bg-slate-50">
                       <tr className="border-b border-gray-200">
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">
                           <button
@@ -840,7 +877,7 @@ export default function StudentsPage() {
                                 )}
                               </button>
                             </td>
-                            <td className="px-4 py-3 text-sm text-gray-500">{index + 1}</td>
+                            <td className="px-4 py-3 text-sm text-gray-500">{(page - 1) * pageSize + index + 1}</td>
                             <td className="px-4 py-3 text-sm font-medium text-gray-900">{student.full_name}</td>
                             <td className="px-4 py-3 text-sm text-gray-700">{student.sex === "M" ? "Male" : "Female"}</td>
                             <td className="px-4 py-3 text-sm text-gray-700">{student.admission_no || "-"}</td>
@@ -875,7 +912,7 @@ export default function StudentsPage() {
                       {!filteredStudents.length && (
                         <tr>
                           <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-600">
-                            {classStudents.length ? "No students match your search." : "No students yet in this stream."}
+                            {classTotal ? "No students match your search." : "No students yet in this stream."}
                           </td>
                         </tr>
                       )}
@@ -883,7 +920,7 @@ export default function StudentsPage() {
                   </table>
                   </div>
 
-                  <div className="divide-y divide-slate-100 md:hidden">
+                  <div className="max-h-[60vh] divide-y divide-slate-100 overflow-y-auto md:hidden">
                     {filteredStudents.map((student, index) => {
                       const isEnrolled = enrolledStudentIds.has(student.id);
                       const isSelected = selectedStudentIds.has(student.id);
@@ -931,7 +968,7 @@ export default function StudentsPage() {
                                     </span>
                                   )
                                 ) : (
-                                  <span className="text-xs text-slate-400">Student {index + 1}</span>
+                                  <span className="text-xs text-slate-400">Student {(page - 1) * pageSize + index + 1}</span>
                                 )}
                                 <button
                                   type="button"
@@ -950,12 +987,21 @@ export default function StudentsPage() {
                     })}
                     {!filteredStudents.length && (
                       <div className="px-4 py-10 text-center text-sm text-slate-500">
-                        {classStudents.length
+                        {classTotal
                           ? "No students match your search."
                           : "No students are registered in this stream yet."}
                       </div>
                     )}
                   </div>
+
+                  <Pagination
+                    page={page}
+                    pageSize={pageSize}
+                    total={total}
+                    onPageChange={setPage}
+                    onPageSizeChange={setPageSize}
+                    loading={studentsLoading}
+                  />
                 </div>
               </>
             ) : (

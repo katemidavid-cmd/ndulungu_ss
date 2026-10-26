@@ -10,14 +10,23 @@ type AcademicPeriod = {
   term: "Term I" | "Term II";
 };
 
-const ACADEMIC_YEARS = ["2026", "2027", "2028", "2029", "2030"];
+const MIN_ACADEMIC_YEAR = 2000;
+const MAX_ACADEMIC_YEAR = 2100;
+const ACADEMIC_YEARS = Array.from(
+  { length: MAX_ACADEMIC_YEAR - MIN_ACADEMIC_YEAR + 1 },
+  (_, index) => String(MIN_ACADEMIC_YEAR + index),
+);
+const CURRENT_YEAR = String(new Date().getFullYear());
+const DEFAULT_ACADEMIC_YEAR = ACADEMIC_YEARS.includes(CURRENT_YEAR)
+  ? CURRENT_YEAR
+  : String(MIN_ACADEMIC_YEAR);
 
 const inputClass =
   "min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10";
 
 export function AcademicPeriodSettings() {
   const [period, setPeriod] = useState<AcademicPeriod>({
-    academic_year: "2026",
+    academic_year: DEFAULT_ACADEMIC_YEAR,
     term: "Term I",
   });
   const [loading, setLoading] = useState(true);
@@ -60,7 +69,10 @@ export function AcademicPeriodSettings() {
   async function savePeriod(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!ACADEMIC_YEARS.includes(period.academic_year)) {
-      notify("error", "Select an academic year from 2026 to 2030.");
+      notify(
+        "error",
+        `Select an academic year from ${MIN_ACADEMIC_YEAR} to ${MAX_ACADEMIC_YEAR}.`,
+      );
       return;
     }
 

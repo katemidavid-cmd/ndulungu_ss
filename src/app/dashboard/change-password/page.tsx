@@ -86,7 +86,7 @@ export default function ChangePasswordPage() {
   return (
     <div className="mx-auto w-full max-w-2xl space-y-5 sm:space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-gray-900 sm:text-2xl">
+        <h2 className="text-lg font-bold text-gray-900 sm:text-xl">
           Change password
         </h2>
         <p className="mt-1 text-sm text-gray-600 sm:text-base">

@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { createClient } from "@/lib/supabase/server";
+import { connection } from "next/server";
 import { redirect } from "next/navigation";
 import { CalendarDays } from "lucide-react";
 import Link from "next/link";
@@ -12,6 +13,8 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  await connection();
+
   const supabase = await createClient();
   const {
     data: { user },

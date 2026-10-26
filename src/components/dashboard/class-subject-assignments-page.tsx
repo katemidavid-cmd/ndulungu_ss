@@ -128,7 +128,7 @@ export default function ClassSubjectAssignmentsPage() {
               <BookOpen className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-gray-900 sm:text-2xl">
+              <h2 className="text-lg font-bold text-gray-900 sm:text-xl">
                 Class Subject Assignments
               </h2>
               <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-600">
@@ -137,7 +137,7 @@ export default function ClassSubjectAssignmentsPage() {
               </p>
             </div>
           </div>
-          <div className="mt-4 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+          <div className="mt-4 space-y-2 text-xs">
             <div className="rounded-lg border border-blue-100 bg-blue-50/70 px-3 py-2.5 text-blue-900">
               <span className="font-semibold">Compulsory:</span> automatically
               enrolled for all students in the form.
@@ -149,7 +149,7 @@ export default function ClassSubjectAssignmentsPage() {
           </div>
         </header>
 
-        <section className="grid grid-cols-1 gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
+        <section className="space-y-4">
           <div className="h-fit rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="mb-3">
               <h3 className="font-semibold text-gray-900">Select a form</h3>
@@ -157,7 +157,7 @@ export default function ClassSubjectAssignmentsPage() {
                 Choose which class level to manage.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-2 xl:grid-cols-1">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {FORM_LEVELS.map((form) => {
                 const formAssignments = assignments.filter(
                   (assignment) => assignment.form === form,

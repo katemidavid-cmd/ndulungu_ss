@@ -6,13 +6,16 @@ import {
   dismissNotification,
   getNotifications,
   subscribeToNotifications,
+  type AppNotification,
 } from "@/lib/notifications";
+
+const EMPTY_NOTIFICATIONS: AppNotification[] = [];
 
 export function NotificationViewport() {
   const notifications = useSyncExternalStore(
     subscribeToNotifications,
     getNotifications,
-    () => [],
+    () => EMPTY_NOTIFICATIONS,
   );
 
   return (

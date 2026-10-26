@@ -2,7 +2,16 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 const VALID_TERMS = ["Term I", "Term II"];
-const VALID_YEARS = ["2026", "2027", "2028", "2029", "2030"];
+const MIN_ACADEMIC_YEAR = 2000;
+const MAX_ACADEMIC_YEAR = 2100;
+
+function isValidAcademicYear(value: string) {
+  return (
+    /^\d{4}$/.test(value) &&
+    Number(value) >= MIN_ACADEMIC_YEAR &&
+    Number(value) <= MAX_ACADEMIC_YEAR
+  );
+}
 
 async function getAuthorizedUser() {
   const supabase = await createClient();
@@ -65,9 +74,11 @@ export async function PUT(request: Request) {
   const academicYear =
     typeof body.academic_year === "string" ? body.academic_year.trim() : "";
   const term = typeof body.term === "string" ? body.term : "";
-  if (!VALID_YEARS.includes(academicYear)) {
+  if (!isValidAcademicYear(academicYear)) {
     return NextResponse.json(
-      { error: "Academic year must be between 2026 and 2030." },
+      {
+        error: `Academic year must be between ${MIN_ACADEMIC_YEAR} and ${MAX_ACADEMIC_YEAR}.`,
+      },
       { status: 400 },
     );
   }

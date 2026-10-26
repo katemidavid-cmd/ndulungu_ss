@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -23,16 +23,58 @@ export async function GET() {
   }
 
   const adminSupabase = createAdminClient();
-  const { data: assignments, error } = await adminSupabase
+  const { searchParams } = new URL(request.url);
+  const teacherIdsParam = searchParams.get("teacherIds");
+  const uuidPattern =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const teacherIds = teacherIdsParam
+    ? [
+        ...new Set(
+          teacherIdsParam
+            .split(",")
+            .map((value) => value.trim())
+            .filter((value) => uuidPattern.test(value)),
+        ),
+      ].slice(0, 100)
+    : null;
+
+  if (teacherIdsParam !== null && (!teacherIds || teacherIds.length === 0)) {
+    const { count: overallCount } = await adminSupabase
+      .from("teaching_assignments")
+      .select("id", { count: "exact", head: true });
+
+    return NextResponse.json({
+      assignments: [],
+      total: 0,
+      overallTotal: overallCount ?? 0,
+    });
+  }
+
+  let assignmentsQuery = adminSupabase
     .from("teaching_assignments")
     .select("*")
     .order("created_at", { ascending: false });
+
+  if (teacherIds) {
+    assignmentsQuery = assignmentsQuery.in("teacher_id", teacherIds);
+  }
+
+  const [{ data: assignments, error }, { count: overallCount }] = await Promise.all([
+    assignmentsQuery,
+    adminSupabase
+      .from("teaching_assignments")
+      .select("id", { count: "exact", head: true }),
+  ]);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ assignments });
+  return NextResponse.json({
+    assignments: assignments ?? [],
+    total: assignments?.length ?? 0,
+    overallTotal: overallCount ?? assignments?.length ?? 0,
+  });
 }
 
 export async function POST(request: Request) {

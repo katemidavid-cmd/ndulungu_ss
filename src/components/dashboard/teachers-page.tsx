@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   BookOpen,
   Edit,
@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
+import { Pagination } from "@/components/ui/pagination";
 import { notify } from "@/lib/notifications";
 
 interface Teacher {
@@ -54,9 +55,17 @@ const secondaryButtonClassName =
 export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [assignmentTotal, setAssignmentTotal] = useState(0);
   const [classSubjects, setClassSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
+  const [teachersLoading, setTeachersLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState(0);
+  const [overallTotal, setOverallTotal] = useState(0);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [showTeacherModal, setShowTeacherModal] = useState(false);
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
   const [editing, setEditing] = useState<Teacher | null>(null);
@@ -78,26 +87,15 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
     new Set(),
   );
 
-  const fetchAll = async () => {
+  const fetchSupport = useCallback(async () => {
     try {
-      const responses = await Promise.all([
-        fetch("/api/teachers"),
-        fetch("/api/teachers/assignments"),
-        fetch("/api/class-subjects"),
-      ]);
-      const data = await Promise.all(
-        responses.map(async (response) => {
-          const body = await response.json();
-          if (!response.ok) {
-            throw new Error(body.error || "Unable to load teacher information.");
-          }
-          return body;
-        }),
-      );
+      const response = await fetch("/api/class-subjects");
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.error || "Unable to load teacher information.");
+      }
 
-      setTeachers(data[0].teachers || []);
-      setAssignments(data[1].assignments || []);
-      setClassSubjects(data[2].assignments || []);
+      setClassSubjects(body.assignments || []);
     } catch (fetchError) {
       notify(
         "error",
@@ -108,11 +106,100 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    void Promise.resolve().then(fetchAll);
-  }, []);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchSupport();
+  }, [fetchSupport]);
+
+  const teacherIds = teachers.map((teacher) => teacher.id).join(",");
+
+  const fetchAssignments = useCallback(async () => {
+    try {
+      const response = await fetch(
+        `/api/teachers/assignments?teacherIds=${encodeURIComponent(teacherIds)}`,
+      );
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.error || "Unable to load teacher information.");
+      }
+
+      setAssignments((body.assignments ?? []) as Assignment[]);
+      setAssignmentTotal(body.overallTotal ?? 0);
+    } catch (fetchError) {
+      notify(
+        "error",
+        fetchError instanceof Error
+          ? fetchError.message
+          : "Unable to load teacher information.",
+      );
+    }
+  }, [teacherIds]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchAssignments();
+  }, [fetchAssignments]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPage(1);
+  }, [debouncedSearch, pageSize]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (page > totalPages) setPage(totalPages);
+  }, [page, total, pageSize]);
+
+  const fetchTeachers = useCallback(async () => {
+    setTeachersLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: String(pageSize),
+      });
+      if (debouncedSearch) params.set("search", debouncedSearch);
+
+      const response = await fetch(`/api/teachers?${params.toString()}`);
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Unable to load teacher information.");
+      }
+
+      setTeachers((data.teachers ?? []) as Teacher[]);
+      setTotal(data.total ?? 0);
+      setOverallTotal(data.overallTotal ?? 0);
+    } catch (fetchError) {
+      notify(
+        "error",
+        fetchError instanceof Error
+          ? fetchError.message
+          : "Unable to load teacher information.",
+      );
+    } finally {
+      setTeachersLoading(false);
+    }
+  }, [debouncedSearch, page, pageSize]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchTeachers();
+  }, [fetchTeachers, refreshKey]);
+
+  const refreshAll = useCallback(async () => {
+    setPage(1);
+    setRefreshKey((current) => current + 1);
+    await Promise.all([fetchSupport(), fetchAssignments()]);
+  }, [fetchAssignments, fetchSupport]);
 
   const showToast = (type: "success" | "error", message: string) => {
     notify(type, message);
@@ -184,7 +271,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
 
       setShowTeacherModal(false);
       showToast("success", editing ? "Teacher updated successfully." : "Teacher added successfully.");
-      await fetchAll();
+      await refreshAll();
     } catch (saveError) {
       showToast(
         "error",
@@ -210,7 +297,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
       }
       showToast("success", `${confirmTeacher.full_name} was deleted successfully.`);
       setConfirmTeacher(null);
-      await fetchAll();
+      await refreshAll();
     } catch (deleteError) {
       showToast(
         "error",
@@ -238,7 +325,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
     });
     if (selectedAssignments.length !== selectedAssignmentKeys.size) {
       showToast("error", "Some selected subjects are no longer available. Reload and try again.");
-      await fetchAll();
+      await refreshAll();
       return;
     }
 
@@ -261,7 +348,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
         "success",
         `${data.created} teaching assignment(s) added for ${assigningTeacher.full_name}.`,
       );
-      await fetchAll();
+      await refreshAll();
     } catch (saveError) {
       showToast(
         "error",
@@ -290,7 +377,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
       }
       showToast("success", `${confirmAssignment.class_name} - ${confirmAssignment.subject_name} was removed.`);
       setConfirmAssignment(null);
-      await fetchAll();
+      await refreshAll();
     } catch (deleteError) {
       showToast(
         "error",
@@ -302,15 +389,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
 
   const getAssignments = (teacherId: string) =>
     assignments.filter((assignment) => assignment.teacher_id === teacherId);
-  const visibleTeachers = teachers.filter((teacher) => {
-    const term = search.trim().toLowerCase();
-    return (
-      !term ||
-      teacher.full_name.toLowerCase().includes(term) ||
-      (teacher.email?.toLowerCase().includes(term) ?? false) ||
-      (teacher.phone?.toLowerCase().includes(term) ?? false)
-    );
-  });
+  const visibleTeachers = teachers;
   const existingAssignmentKeys = new Set(
     assignments
       .filter((assignment) => assignment.teacher_id === assigningTeacher?.id)
@@ -326,15 +405,15 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6">
-      <header className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-blue-950 to-blue-800 p-6 text-white shadow-lg sm:p-8">
+      <header className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-950 via-blue-950 to-blue-800 p-4 text-white shadow-lg sm:p-5">
         <div className="absolute -right-12 -top-20 h-64 w-64 rounded-full bg-white/5 blur-2xl" />
-        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+        <div className="relative flex flex-col items-start gap-4">
           <div className="max-w-2xl">
             <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-blue-100">
               <Users className="h-3.5 w-3.5" />
               Staff directory
             </span>
-            <h2 className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">
+            <h2 className="mt-2 text-xl font-bold tracking-tight sm:text-2xl">
               Teachers
             </h2>
             <p className="mt-2 max-w-xl text-sm leading-6 text-blue-100/90 sm:text-base">
@@ -359,15 +438,15 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <p className="text-sm text-slate-500">Total teachers</p>
-          <p className="mt-1 text-2xl font-bold text-slate-950">{teachers.length}</p>
+          <p className="mt-1 text-xl font-bold text-slate-950">{overallTotal}</p>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <p className="text-sm text-slate-500">Teaching assignments</p>
-          <p className="mt-1 text-2xl font-bold text-slate-950">{assignments.length}</p>
+          <p className="mt-1 text-xl font-bold text-slate-950">{assignmentTotal}</p>
         </div>
         <div className="col-span-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:col-span-1 sm:p-5">
           <p className="text-sm text-slate-500">Showing</p>
-          <p className="mt-1 text-2xl font-bold text-slate-950">{visibleTeachers.length}</p>
+          <p className="mt-1 text-xl font-bold text-slate-950">{total}</p>
         </div>
       </section>
 
@@ -383,7 +462,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
           />
         </label>
 
-        {loading ? (
+        {loading || teachersLoading ? (
           <LoadingIndicator
             label="Loading teacher information..."
             className="rounded-2xl border border-slate-100 bg-slate-50 p-8"
@@ -394,14 +473,14 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
               <Users className="h-7 w-7" />
             </span>
             <h3 className="mt-4 font-semibold text-slate-900">
-              {teachers.length === 0 ? "No teachers added yet" : "No matching teachers"}
+              {overallTotal === 0 ? "No teachers added yet" : "No matching teachers"}
             </h3>
             <p className="mt-1 text-sm text-slate-500">
-              {teachers.length === 0
+              {overallTotal === 0
                 ? "Add a teacher to build your school staff directory."
                 : "Try searching with a different name or contact detail."}
             </p>
-            {canManageTeachers && teachers.length === 0 && (
+            {canManageTeachers && overallTotal === 0 && (
               <button
                 type="button"
                 onClick={openAddTeacher}
@@ -413,7 +492,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
             )}
           </div>
         ) : (
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className="space-y-4">
             {visibleTeachers.map((teacher) => {
               const teacherAssignments = getAssignments(teacher.id);
               const assignmentsByClass = new Map<string, Assignment[]>();
@@ -544,6 +623,15 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
             })}
           </div>
         )}
+
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          loading={teachersLoading}
+        />
       </section>
 
       {confirmTeacher && (

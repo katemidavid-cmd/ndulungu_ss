@@ -14,6 +14,7 @@ import {
   LoaderCircle,
   Play,
   Plus,
+  RotateCcw,
   Search,
   TriangleAlert,
   X,
@@ -84,6 +85,7 @@ export function ExamManagementPage({
   const [updatingExamId, setUpdatingExamId] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [examToProcess, setExamToProcess] = useState<Exam | null>(null);
+  const [examToReopen, setExamToReopen] = useState<Exam | null>(null);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -295,7 +297,10 @@ export function ExamManagementPage({
     }
   }
 
-  async function updateExamStatus(exam: Exam, action: "activate" | "process") {
+  async function updateExamStatus(
+    exam: Exam,
+    action: "activate" | "process" | "reopen",
+  ) {
     setUpdatingExamId(exam.id);
     try {
       const response = await fetch(`/api/exams/${exam.id}/${action}`, {
@@ -304,6 +309,7 @@ export function ExamManagementPage({
       const result = (await response.json()) as {
         results_count?: number;
         incomplete_count?: number;
+        results_removed?: number;
         error?: string;
       };
       if (!response.ok) {
@@ -313,9 +319,12 @@ export function ExamManagementPage({
         "success",
         action === "activate"
           ? "Examination activated. Teachers can now enter marks."
-          : `Examination processed. ${result.results_count ?? 0} student results are ready; ${result.incomplete_count ?? 0} are incomplete.`,
+          : action === "process"
+            ? `Examination processed. ${result.results_count ?? 0} student results are ready; ${result.incomplete_count ?? 0} are incomplete.`
+            : `Examination reopened for mark entry. ${result.results_removed ?? 0} previous result(s) were removed.`,
       );
       if (action === "process") setStatusFilter("Processed");
+      if (action === "reopen") setStatusFilter("Active");
       await refreshAll();
     } catch (error) {
       notify(
@@ -327,20 +336,21 @@ export function ExamManagementPage({
     } finally {
       setUpdatingExamId(null);
       if (action === "process") setExamToProcess(null);
+      if (action === "reopen") setExamToReopen(null);
     }
   }
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6">
-      <header className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-800 p-5 text-white shadow-lg sm:p-7">
+      <header className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-800 p-4 text-white shadow-lg sm:p-5">
         <div className="absolute -right-10 -top-20 h-56 w-56 rounded-full bg-white/5 blur-2xl" />
-        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+        <div className="relative flex flex-col items-start gap-4">
           <div>
             <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-blue-100">
               <ClipboardList className="h-3.5 w-3.5" />
               Assessment centre
             </span>
-            <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
+            <h2 className="mt-2 text-xl font-bold tracking-tight sm:text-2xl">
               {canManageExams ? "Exam Management" : "My Exams"}
             </h2>
             <p className="mt-2 max-w-xl text-sm leading-6 text-blue-100/90 sm:text-base">
@@ -366,7 +376,9 @@ export function ExamManagementPage({
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
           { label: "Total exams", value: overallTotal, icon: ClipboardList },
-          { label: "Drafts", value: draftCount, icon: Clock3 },
+          ...(canManageExams
+            ? [{ label: "Drafts", value: draftCount, icon: Clock3 }]
+            : []),
           { label: "Active", value: activeCount, icon: CalendarDays },
           { label: "Processed", value: processedCount, icon: Check },
         ].map(({ label, value, icon: Icon }) => (
@@ -378,7 +390,7 @@ export function ExamManagementPage({
               <Icon className="h-4 w-4" />
             </span>
             <p className="mt-3 text-sm text-slate-500">{label}</p>
-            <p className="mt-0.5 text-2xl font-bold text-slate-950">
+            <p className="mt-0.5 text-xl font-bold text-slate-950">
               {loading || examsLoading ? "-" : value}
             </p>
           </div>
@@ -397,19 +409,17 @@ export function ExamManagementPage({
               className={`${inputClass} pl-10`}
             />
           </label>
-          {canManageExams && (
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              className={`${inputClass} sm:w-48`}
-              aria-label="Filter exams by status"
-            >
-              <option>All</option>
-              <option>Draft</option>
-              <option>Active</option>
-              <option>Processed</option>
-            </select>
-          )}
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+            className={`${inputClass} sm:w-48`}
+            aria-label="Filter exams by status"
+          >
+            <option>All</option>
+            {canManageExams && <option>Draft</option>}
+            <option>Active</option>
+            <option>Processed</option>
+          </select>
         </div>
 
         {loading || examsLoading ? (
@@ -486,9 +496,9 @@ export function ExamManagementPage({
                     {exam.status}
                   </span>
                 </div>
-                {canManageExams && (
+                {(canManageExams || exam.status !== "Draft") && (
                   <div className="flex flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:justify-end">
-                    {exam.status === "Draft" && (
+                    {canManageExams && exam.status === "Draft" && (
                       <button
                         type="button"
                         disabled={updatingExamId !== null}
@@ -503,7 +513,7 @@ export function ExamManagementPage({
                         Activate
                       </button>
                     )}
-                    {exam.status === "Active" && (
+                    {canManageExams && exam.status === "Active" && (
                       <button
                         type="button"
                         disabled={updatingExamId !== null}
@@ -518,7 +528,22 @@ export function ExamManagementPage({
                         Process
                       </button>
                     )}
-                    {exam.status === "Processed" && (
+                    {canManageExams && exam.status === "Processed" && (
+                      <button
+                        type="button"
+                        disabled={updatingExamId !== null}
+                        onClick={() => setExamToReopen(exam)}
+                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {updatingExamId === exam.id ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <RotateCcw className="h-4 w-4" />
+                        )}
+                        Reopen
+                      </button>
+                    )}
+                    {canManageExams && exam.status === "Processed" && (
                       <Link
                         href={`${dashboardBase}/exams/${exam.id}/results`}
                         className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-semibold text-blue-800 hover:bg-blue-100"
@@ -527,17 +552,15 @@ export function ExamManagementPage({
                         View Results
                       </Link>
                     )}
-                  </div>
-                )}
-                {!canManageExams && exam.status === "Active" && (
-                  <div className="flex justify-end border-t border-slate-100 pt-3">
-                    <Link
-                      href={`${dashboardBase}/marks?examId=${encodeURIComponent(exam.id)}`}
-                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800"
-                    >
-                      <FileText className="h-4 w-4" />
-                      Enter Marks
-                    </Link>
+                    {!canManageExams && exam.status === "Active" && (
+                      <Link
+                        href={`${dashboardBase}/marks?examId=${encodeURIComponent(exam.id)}`}
+                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800"
+                      >
+                        <FileText className="h-4 w-4" />
+                        Enter Marks
+                      </Link>
+                    )}
                   </div>
                 )}
               </article>
@@ -744,6 +767,60 @@ export function ExamManagementPage({
                 </button>
               </div>
             </form>
+          </section>
+        </div>
+      )}
+
+      {examToReopen && (
+        <div
+          className="fixed inset-0 z-[90] flex items-end justify-center bg-slate-950/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && updatingExamId === null) {
+              setExamToReopen(null);
+            }
+          }}
+        >
+          <section
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="reopen-exam-title"
+            aria-describedby="reopen-exam-description"
+            className="w-full rounded-t-3xl bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-lg sm:rounded-2xl sm:p-6"
+          >
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+              <RotateCcw className="h-5 w-5" />
+            </span>
+            <h3 id="reopen-exam-title" className="mt-4 text-lg font-bold text-slate-950 dark:text-white">
+              Reopen examination for editing?
+            </h3>
+            <p id="reopen-exam-description" className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
+              Results for <span className="font-semibold">{examToReopen.name}</span> will be removed, and mark entry will be reopened. Process the examination again when corrections are complete.
+            </p>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                disabled={updatingExamId !== null}
+                onClick={() => setExamToReopen(null)}
+                className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={updatingExamId !== null}
+                onClick={() => {
+                  void updateExamStatus(examToReopen, "reopen");
+                }}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {updatingExamId === examToReopen.id ? (
+                  <LoaderCircle className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-4 w-4" />
+                )}
+                Reopen examination
+              </button>
+            </div>
           </section>
         </div>
       )}

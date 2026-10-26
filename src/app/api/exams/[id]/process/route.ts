@@ -306,56 +306,34 @@ export async function POST(_request: Request, { params }: RouteContext) {
     }
     return { ...result, position };
   });
-  const { error: upsertError } = await admin
-    .from("exam_results")
-    .upsert(rankedRows, { onConflict: "exam_id,student_id" });
-  if (upsertError) {
-    return NextResponse.json({ error: upsertError.message }, { status: 500 });
+  const { data: finalized, error: finalizeError } = await admin.rpc(
+    "finalize_exam_results",
+    {
+      p_exam_id: id,
+      p_user_id: user.id,
+      p_results: rankedRows,
+    },
+  );
+  if (finalizeError) {
+    const message = finalizeError.message || "Unable to process examination results.";
+    const status = message.includes("not found")
+      ? 404
+      : message.includes("Only active")
+        ? 409
+        : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 
-  const { data: processedExam, error: updateError } = await admin
-    .from("exams")
-    .update({
-      status: "Processed",
-      processed_at: new Date().toISOString(),
-      processed_by: user.id,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id)
-    .eq("status", "Active")
-    .select("id, status")
-    .maybeSingle();
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
-  }
-  if (!processedExam) {
-    return NextResponse.json(
-      {
-        error:
-          "Results were calculated, but the exam status changed. Refresh and verify the results.",
-      },
-      { status: 409 },
-    );
-  }
-
-  const { error: auditError } = await admin.from("exam_audit_logs").insert({
-    exam_id: id,
-    user_id: user.id,
-    action: "processed",
-    details: { results_count: rankedRows.length },
-  });
-  if (auditError) {
-    return NextResponse.json(
-      {
-        error: `Results were processed, but the audit log could not be written: ${auditError.message}`,
-      },
-      { status: 500 },
-    );
-  }
+  const summary = (finalized ?? {}) as {
+    results_count?: number;
+    incomplete_count?: number;
+  };
 
   return NextResponse.json({
-    exam: processedExam,
-    results_count: rankedRows.length,
-    incomplete_count: rankedRows.filter((result) => result.is_incomplete).length,
+    exam: { id, status: "Processed" },
+    results_count: summary.results_count ?? rankedRows.length,
+    incomplete_count:
+      summary.incomplete_count ??
+      rankedRows.filter((result) => result.is_incomplete).length,
   });
 }

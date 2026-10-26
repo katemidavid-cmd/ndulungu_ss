@@ -4,7 +4,7 @@ export default function AcademicSettingsPage() {
   return (
     <div className="mx-auto w-full max-w-5xl space-y-5 sm:space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-slate-900 sm:text-2xl">
+        <h2 className="text-lg font-bold text-slate-900 sm:text-xl">
           Academic Settings
         </h2>
         <p className="mt-1 text-sm text-slate-600 sm:text-base">

@@ -140,7 +140,7 @@ export default function ProfilePage() {
   return (
     <div className="mx-auto w-full max-w-3xl space-y-5 sm:space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-slate-900 sm:text-2xl">My Profile</h2>
+        <h2 className="text-lg font-bold text-slate-900 sm:text-xl">My Profile</h2>
         <p className="mt-1 text-sm text-slate-600 sm:text-base">
           Update your personal information.
         </p>

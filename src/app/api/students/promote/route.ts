@@ -82,16 +82,13 @@ export async function POST(req: Request) {
   }
 
   if (action === "graduate") {
-    const { error: delError } = await adminSupabase
-      .from("students")
-      .delete()
-      .in("id", studentIds);
-
-    if (delError) {
-      return NextResponse.json({ error: delError.message }, { status: 500 });
-    }
-
-    return NextResponse.json({ success: true });
+    return NextResponse.json(
+      {
+        error:
+          "Graduation cannot delete student records because it would remove their academic history. Keep the student record or move the student to a dedicated alumni class.",
+      },
+      { status: 409 },
+    );
   }
 
   if (!targetClassId) {

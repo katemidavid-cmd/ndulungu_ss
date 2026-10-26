@@ -13,10 +13,10 @@ import {
   Square,
   SquareCheck,
   Trash2,
-  Users,
   X,
 } from "lucide-react";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
+import { Pagination } from "@/components/ui/pagination";
 import { notify } from "@/lib/notifications";
 import { createClient } from "@/lib/supabase/client";
 
@@ -68,6 +68,24 @@ function classLabel(schoolClass: SchoolClass) {
   return `${schoolClass.form} ${schoolClass.stream}`;
 }
 
+function deleteStudentError(error: unknown, multiple = false) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === "23503"
+  ) {
+    return multiple
+      ? "One or more selected students have marks or examination results. Reopen the affected exam and remove their records first."
+      : "This student has marks or examination results and cannot be deleted. Reopen the affected exam and remove their records first.";
+  }
+  return error instanceof Error
+    ? error.message
+    : multiple
+      ? "Unable to delete students."
+      : "Unable to delete student.";
+}
+
 export function RegisteredStudentsManager({
   registrationHref,
 }: {
@@ -78,11 +96,20 @@ export function RegisteredStudentsManager({
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedForm, setSelectedForm] = useState<FormLevel | "All">("All");
   const [selectedClassId, setSelectedClassId] = useState("All");
-  const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(
-    new Set(),
-  );
+  const [selectedStudentMap, setSelectedStudentMap] = useState<
+    Record<string, Student>
+  >({});
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [studentsLoading, setStudentsLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState(0);
+  const [overallTotal, setOverallTotal] = useState(0);
+  const [classCounts, setClassCounts] = useState<Record<string, number>>({});
+  const [formCounts, setFormCounts] = useState<Record<string, number>>({});
+  const [refreshKey, setRefreshKey] = useState(0);
   const [saving, setSaving] = useState(false);
   const [studentToEdit, setStudentToEdit] = useState<Student | null>(null);
   const [editForm, setEditForm] = useState<EditForm>(EMPTY_EDIT_FORM);
@@ -106,37 +133,88 @@ export function RegisteredStudentsManager({
   const [bulkSubjects, setBulkSubjects] = useState<OptionalSubject[]>([]);
   const [bulkSubjectId, setBulkSubjectId] = useState("");
 
-  const load = useCallback(async () => {
-    const [classesResult, studentsResult] = await Promise.all([
-      supabase.from("classes").select("id, form, stream").order("form").order("stream"),
-      supabase
-        .from("students")
-        .select(
-          "id, class_id, first_name, middle_name, last_name, full_name, sex, admission_no, created_at",
-        )
-        .order("last_name")
-        .order("first_name"),
-    ]);
+  const loadClasses = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("classes")
+      .select("id, form, stream")
+      .order("form")
+      .order("stream");
 
-    if (classesResult.error || studentsResult.error) {
-      notify(
-        "error",
-        classesResult.error?.message ??
-          studentsResult.error?.message ??
-          "Unable to load registered students.",
-      );
-      setLoading(false);
-      return;
+    if (error) {
+      notify("error", error.message);
+    } else {
+      setClasses((data ?? []) as SchoolClass[]);
     }
-
-    setClasses((classesResult.data ?? []) as SchoolClass[]);
-    setStudents((studentsResult.data ?? []) as Student[]);
     setLoading(false);
   }, [supabase]);
 
   useEffect(() => {
-    void Promise.resolve().then(load);
-  }, [load]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadClasses();
+  }, [loadClasses]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPage(1);
+  }, [debouncedSearch, pageSize, selectedClassId, selectedForm]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (page > totalPages) setPage(totalPages);
+  }, [page, total, pageSize]);
+
+  const loadStudents = useCallback(async () => {
+    setStudentsLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: String(pageSize),
+        includeCounts: "1",
+      });
+      if (debouncedSearch) params.set("search", debouncedSearch);
+      if (selectedForm !== "All") params.set("form", selectedForm);
+      if (selectedClassId !== "All") params.set("classId", selectedClassId);
+
+      const response = await fetch(`/api/students?${params.toString()}`);
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Unable to load registered students.");
+      }
+
+      setStudents((data.students ?? []) as Student[]);
+      setTotal(data.total ?? 0);
+      setOverallTotal(data.overallTotal ?? 0);
+      setClassCounts((data.classCounts ?? {}) as Record<string, number>);
+      setFormCounts((data.formCounts ?? {}) as Record<string, number>);
+    } catch (error) {
+      notify(
+        "error",
+        error instanceof Error
+          ? error.message
+          : "Unable to load registered students.",
+      );
+    } finally {
+      setStudentsLoading(false);
+    }
+  }, [debouncedSearch, page, pageSize, selectedClassId, selectedForm]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadStudents();
+  }, [loadStudents, refreshKey]);
+
+  const refreshStudents = useCallback(() => {
+    setPage(1);
+    setRefreshKey((current) => current + 1);
+  }, []);
 
   const classesForForm = useMemo(
     () =>
@@ -146,36 +224,14 @@ export function RegisteredStudentsManager({
     [classes, selectedForm],
   );
 
-  const visibleStudents = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return students.filter((student) => {
-      const schoolClass = classes.find((item) => item.id === student.class_id);
-      if (!schoolClass) return false;
-      if (selectedForm !== "All" && schoolClass.form !== selectedForm) {
-        return false;
-      }
-      if (selectedClassId !== "All" && student.class_id !== selectedClassId) {
-        return false;
-      }
-      if (!term) return true;
-      return (
-        student.full_name.toLowerCase().includes(term) ||
-        (student.admission_no?.toLowerCase().includes(term) ?? false) ||
-        classLabel(schoolClass).toLowerCase().includes(term)
-      );
-    });
-  }, [classes, search, selectedClassId, selectedForm, students]);
-
-  const studentCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const student of students) {
-      counts.set(student.class_id, (counts.get(student.class_id) ?? 0) + 1);
-    }
-    return counts;
-  }, [students]);
+  const visibleStudents = students;
   const selectedStudents = useMemo(
-    () => students.filter((student) => selectedStudentIds.has(student.id)),
-    [selectedStudentIds, students],
+    () => Object.values(selectedStudentMap),
+    [selectedStudentMap],
+  );
+  const selectedStudentIds = useMemo(
+    () => new Set(Object.keys(selectedStudentMap)),
+    [selectedStudentMap],
   );
   const selectedForms = useMemo(
     () =>
@@ -210,34 +266,40 @@ export function RegisteredStudentsManager({
     setSelectedClassId("All");
   }
 
-  function toggleStudentSelection(studentId: string) {
-    if (!selectedStudentIds.has(studentId) && selectedStudentIds.size >= 500) {
-      notify("error", "You can select up to 500 students for a bulk action.");
-      return;
-    }
-    setSelectedStudentIds((current) => {
-      const next = new Set(current);
-      if (next.has(studentId)) next.delete(studentId);
-      else next.add(studentId);
-      return next;
+  function clearSelection() {
+    setSelectedStudentMap({});
+  }
+
+  function toggleStudentSelection(student: Student) {
+    setSelectedStudentMap((current) => {
+      if (current[student.id]) {
+        const next = { ...current };
+        delete next[student.id];
+        return next;
+      }
+      if (Object.keys(current).length >= 500) {
+        notify("error", "You can select up to 500 students for a bulk action.");
+        return current;
+      }
+      return { ...current, [student.id]: student };
     });
   }
 
   function toggleVisibleStudentSelection() {
-    if (!allVisibleSelected) {
-      const next = new Set(selectedStudentIds);
-      visibleStudents.forEach((student) => next.add(student.id));
-      if (next.size > 500) {
-        notify("error", "Bulk actions are limited to 500 selected students.");
-        return;
-      }
-    }
-    setSelectedStudentIds((current) => {
-      const next = new Set(current);
+    setSelectedStudentMap((current) => {
       if (allVisibleSelected) {
-        visibleStudents.forEach((student) => next.delete(student.id));
-      } else {
-        visibleStudents.forEach((student) => next.add(student.id));
+        const next = { ...current };
+        for (const student of visibleStudents) delete next[student.id];
+        return next;
+      }
+
+      const next = { ...current };
+      for (const student of visibleStudents) {
+        if (Object.keys(next).length >= 500) {
+          notify("error", "Bulk actions are limited to 500 selected students.");
+          return current;
+        }
+        next[student.id] = student;
       }
       return next;
     });
@@ -296,7 +358,7 @@ export function RegisteredStudentsManager({
         "success",
         `Optional subject ${action === "assign" ? "assigned to" : "removed from"} ${selectedStudents.length} student(s).`,
       );
-      setSelectedStudentIds(new Set());
+      clearSelection();
       setBulkDialog(null);
     } catch (error) {
       notify(
@@ -332,9 +394,9 @@ export function RegisteredStudentsManager({
         "success",
         `${selectedStudents.length} student(s) promoted to ${destination ? classLabel(destination) : "the next form"}.`,
       );
-      setSelectedStudentIds(new Set());
+      clearSelection();
       setBulkDialog(null);
-      await load();
+      refreshStudents();
     } catch (error) {
       notify(
         "error",
@@ -360,14 +422,11 @@ export function RegisteredStudentsManager({
         );
       if (error) throw error;
       notify("success", `${selectedStudents.length} student(s) deleted.`);
-      setSelectedStudentIds(new Set());
+      clearSelection();
       setBulkDialog(null);
-      await load();
+      refreshStudents();
     } catch (error) {
-      notify(
-        "error",
-        error instanceof Error ? error.message : "Unable to delete students.",
-      );
+      notify("error", deleteStudentError(error, true));
     } finally {
       setSaving(false);
     }
@@ -411,7 +470,8 @@ export function RegisteredStudentsManager({
       if (error) throw error;
       notify("success", "Student details updated.");
       setStudentToEdit(null);
-      await load();
+      clearSelection();
+      refreshStudents();
     } catch (error) {
       notify(
         "error",
@@ -434,12 +494,10 @@ export function RegisteredStudentsManager({
       if (error) throw error;
       notify("success", `${studentToDelete.full_name} was deleted.`);
       setStudentToDelete(null);
-      await load();
+      clearSelection();
+      refreshStudents();
     } catch (error) {
-      notify(
-        "error",
-        error instanceof Error ? error.message : "Unable to delete student.",
-      );
+      notify("error", deleteStudentError(error));
     } finally {
       setSaving(false);
     }
@@ -491,7 +549,8 @@ export function RegisteredStudentsManager({
         `${studentToPromote.full_name} promoted to ${destination ? classLabel(destination) : "the next class"}.`,
       );
       setStudentToPromote(null);
-      await load();
+      clearSelection();
+      refreshStudents();
     } catch (error) {
       notify(
         "error",
@@ -603,50 +662,37 @@ export function RegisteredStudentsManager({
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6">
-      <header className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-800 p-5 text-white shadow-lg sm:p-7">
-        <div className="absolute -right-10 -top-20 h-56 w-56 rounded-full bg-white/5 blur-2xl" />
-        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-blue-100">
-              <Users className="h-3.5 w-3.5" />
-              Student records
-            </span>
-            <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
-              Registered Students
-            </h2>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-blue-100/90 sm:text-base">
-              Find students, manage optional subjects, update personal details,
-              and move students to the next form.
-            </p>
-          </div>
+      <header className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+        <h2 className="text-lg font-bold tracking-tight text-slate-900">
+          Registered Students
+        </h2>
           <Link
             href={registrationHref}
-            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-bold text-blue-900 transition hover:bg-blue-50 sm:w-auto"
+            className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg bg-blue-700 px-3 text-sm font-semibold text-white transition hover:bg-blue-800"
           >
             <GraduationCap className="h-4 w-4" />
             Student registration
             <ArrowRight className="h-4 w-4" />
           </Link>
-        </div>
       </header>
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <p className="text-sm text-slate-500">Total registered</p>
-          <p className="mt-1 text-2xl font-bold text-slate-950">
-            {loading ? "—" : students.length}
+          <p className="mt-1 text-xl font-bold text-slate-950">
+            {loading || studentsLoading ? "-" : overallTotal}
           </p>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <p className="text-sm text-slate-500">Classes</p>
-          <p className="mt-1 text-2xl font-bold text-slate-950">
-            {loading ? "—" : classes.length}
+          <p className="mt-1 text-xl font-bold text-slate-950">
+            {loading ? "-" : classes.length}
           </p>
         </div>
         <div className="col-span-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:col-span-1 sm:p-5">
           <p className="text-sm text-slate-500">Showing</p>
-          <p className="mt-1 text-2xl font-bold text-slate-950">
-            {loading ? "—" : visibleStudents.length}
+          <p className="mt-1 text-xl font-bold text-slate-950">
+            {loading || studentsLoading ? "-" : total}
           </p>
         </div>
       </section>
@@ -656,13 +702,7 @@ export function RegisteredStudentsManager({
           <div className="flex flex-wrap gap-2">
             {(["All", ...FORMS] as const).map((form) => {
               const count =
-                form === "All"
-                  ? students.length
-                  : students.filter(
-                      (student) =>
-                        classes.find((item) => item.id === student.class_id)
-                          ?.form === form,
-                    ).length;
+                form === "All" ? overallTotal : formCounts[form] ?? 0;
               const active = selectedForm === form;
               return (
                 <button
@@ -684,14 +724,14 @@ export function RegisteredStudentsManager({
             })}
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,0.45fr)]">
+          <div className="space-y-3">
             <label className="relative block">
               <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 type="search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search name, admission number, or class"
+                placeholder="Search by name or admission number"
                 className="min-h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
               />
             </label>
@@ -703,7 +743,7 @@ export function RegisteredStudentsManager({
               <option value="All">All classes</option>
               {classesForForm.map((schoolClass) => (
                 <option key={schoolClass.id} value={schoolClass.id}>
-                  {classLabel(schoolClass)} ({studentCounts.get(schoolClass.id) ?? 0})
+                  {classLabel(schoolClass)} ({classCounts[schoolClass.id] ?? 0})
                 </option>
               ))}
             </select>
@@ -792,7 +832,7 @@ export function RegisteredStudentsManager({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setSelectedStudentIds(new Set())}
+                  onClick={clearSelection}
                   className="inline-flex min-h-10 items-center justify-center rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-white"
                 >
                   Clear selection
@@ -802,7 +842,7 @@ export function RegisteredStudentsManager({
           </div>
         )}
 
-        {loading ? (
+        {loading || studentsLoading ? (
           <div className="flex justify-center px-5 py-12">
             <LoadingIndicator label="Loading registered students..." />
           </div>
@@ -812,14 +852,14 @@ export function RegisteredStudentsManager({
               <GraduationCap className="h-7 w-7" />
             </span>
             <h3 className="mt-4 font-semibold text-slate-900">
-              {students.length === 0 ? "No students registered yet" : "No students found"}
+              {overallTotal === 0 ? "No students registered yet" : "No students found"}
             </h3>
             <p className="mt-1 max-w-md text-sm text-slate-500">
-              {students.length === 0
+              {overallTotal === 0
                 ? "Register students first. They will appear here for ongoing management."
                 : "Try a different search or class filter."}
             </p>
-            {students.length === 0 && (
+            {overallTotal === 0 && (
               <Link
                 href={registrationHref}
                 className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800"
@@ -861,7 +901,7 @@ export function RegisteredStudentsManager({
                         <input
                           type="checkbox"
                           checked={selectedStudentIds.has(student.id)}
-                          onChange={() => toggleStudentSelection(student.id)}
+                          onChange={() => toggleStudentSelection(student)}
                           aria-label={`Select ${student.full_name}`}
                           className="h-4 w-4 rounded border-slate-300 text-blue-700 focus:ring-blue-500"
                         />
@@ -915,7 +955,7 @@ export function RegisteredStudentsManager({
                       <input
                         type="checkbox"
                         checked={selectedStudentIds.has(student.id)}
-                        onChange={() => toggleStudentSelection(student.id)}
+                        onChange={() => toggleStudentSelection(student)}
                         aria-label={`Select ${student.full_name}`}
                         className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300 text-blue-700 focus:ring-blue-500"
                       />
@@ -949,6 +989,15 @@ export function RegisteredStudentsManager({
             </div>
           </>
         )}
+
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          loading={studentsLoading}
+        />
       </section>
 
       {studentToEdit && (
@@ -1118,7 +1167,7 @@ export function RegisteredStudentsManager({
       {studentToDelete && (
         <Modal
           title="Delete student"
-          description={`Are you sure you want to delete ${studentToDelete.full_name}? This will also remove their subject enrollments. This action cannot be undone.`}
+          description={`Are you sure you want to delete ${studentToDelete.full_name}? This will also remove their subject enrollments. Students with marks or examination results cannot be deleted.`}
           onClose={() => setStudentToDelete(null)}
         >
           <ModalActions
@@ -1229,7 +1278,7 @@ export function RegisteredStudentsManager({
       {bulkDialog === "delete" && (
         <Modal
           title="Delete selected students"
-          description={`You are about to permanently delete ${selectedStudents.length} student(s) and their subject enrollments. This action cannot be undone.`}
+          description={`You are about to permanently delete ${selectedStudents.length} student(s) and their subject enrollments. Students with marks or examination results cannot be deleted. This action cannot be undone.`}
           onClose={() => setBulkDialog(null)}
         >
           <ModalActions

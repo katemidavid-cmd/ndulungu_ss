@@ -9,7 +9,14 @@ type MarkInput = {
   theory_score?: unknown;
   practical_score?: unknown;
   is_absent?: unknown;
+  marks?: unknown;
 };
+
+type StudentMarkInput = Omit<MarkInput, "marks">;
+
+function isStudentMarkInput(value: unknown): value is StudentMarkInput {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function isScore(value: unknown, max: number): value is number {
   return (
@@ -174,8 +181,159 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "This subject is not assigned to you for this examination." }, { status: 403 });
   }
 
+  const page = Math.max(
+    1,
+    Number.parseInt(searchParams.get("page") ?? "", 10) || 1,
+  );
+  const pageSize = Math.min(
+    100,
+    Math.max(1, Number.parseInt(searchParams.get("pageSize") ?? "", 10) || 20),
+  );
+  const search = (searchParams.get("search") ?? "")
+    .replace(/[,()%]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const from = (page - 1) * pageSize;
+
   try {
-    const students = await getEligibleStudents(admin, exam.class_form, subjectId);
+    const { data: schoolClasses, error: classesError } = await admin
+      .from("classes")
+      .select("id")
+      .eq("form", exam.class_form);
+    if (classesError) {
+      return NextResponse.json({ error: classesError.message }, { status: 500 });
+    }
+    const classIds = (schoolClasses ?? []).map((schoolClass) => schoolClass.id);
+    if (classIds.length === 0) {
+      return NextResponse.json({
+        exam,
+        subjects,
+        students: [],
+        marks: [],
+        total: 0,
+        overallTotal: 0,
+        page: 1,
+        pageSize,
+        totalPages: 1,
+      });
+    }
+
+    const { data: classSubject, error: classSubjectError } = await admin
+      .from("class_subject_assignments")
+      .select("is_compulsory")
+      .eq("form", exam.class_form)
+      .eq("subject_id", subjectId)
+      .maybeSingle();
+    if (classSubjectError) {
+      return NextResponse.json(
+        { error: classSubjectError.message },
+        { status: 500 },
+      );
+    }
+    if (!classSubject) {
+      return NextResponse.json({
+        exam,
+        subjects,
+        students: [],
+        marks: [],
+        total: 0,
+        overallTotal: 0,
+        page: 1,
+        pageSize,
+        totalPages: 1,
+      });
+    }
+
+    type StudentRow = {
+      id: string;
+      full_name: string;
+      admission_no: string | null;
+      class_id: string;
+    };
+
+    let students: StudentRow[] = [];
+    let total = 0;
+    let overallTotal = 0;
+
+    if (classSubject.is_compulsory) {
+      let listQuery = admin
+        .from("students")
+        .select("id, full_name, admission_no, class_id", { count: "exact" })
+        .in("class_id", classIds);
+      if (search) {
+        listQuery = listQuery.or(
+          `full_name.ilike.%${search}%,admission_no.ilike.%${search}%`,
+        );
+      }
+
+      const [listResult, overallResult] = await Promise.all([
+        listQuery
+          .order("full_name")
+          .order("id")
+          .range(from, from + pageSize - 1),
+        admin
+          .from("students")
+          .select("id", { count: "exact", head: true })
+          .in("class_id", classIds),
+      ]);
+      if (listResult.error || overallResult.error) {
+        return NextResponse.json(
+          { error: listResult.error?.message ?? overallResult.error?.message },
+          { status: 500 },
+        );
+      }
+      students = (listResult.data ?? []) as StudentRow[];
+      total = listResult.count ?? 0;
+      overallTotal = overallResult.count ?? 0;
+    } else {
+      let listQuery = admin
+        .from("student_subjects")
+        .select(
+          "student_id, students!inner(id, full_name, admission_no, class_id)",
+          { count: "exact" },
+        )
+        .eq("subject_id", subjectId)
+        .in("students.class_id", classIds);
+      if (search) {
+        listQuery = listQuery.or(
+          `full_name.ilike.%${search}%,admission_no.ilike.%${search}%`,
+          { referencedTable: "students" },
+        );
+      }
+
+      const [listResult, overallResult] = await Promise.all([
+        listQuery
+          .order("full_name", { referencedTable: "students" })
+          .order("student_id")
+          .range(from, from + pageSize - 1),
+        admin
+          .from("student_subjects")
+          .select("student_id, students!inner(id)", {
+            count: "exact",
+            head: true,
+          })
+          .eq("subject_id", subjectId)
+          .in("students.class_id", classIds),
+      ]);
+      if (listResult.error || overallResult.error) {
+        return NextResponse.json(
+          { error: listResult.error?.message ?? overallResult.error?.message },
+          { status: 500 },
+        );
+      }
+
+      students = (listResult.data ?? []).flatMap((row) => {
+        const embedded = row.students as unknown as
+          | StudentRow
+          | StudentRow[]
+          | null;
+        if (!embedded) return [];
+        return [Array.isArray(embedded) ? embedded[0] : embedded];
+      });
+      total = listResult.count ?? 0;
+      overallTotal = overallResult.count ?? 0;
+    }
+
     const studentIds = students.map((student) => student.id);
     const { data: marks, error: marksError } = studentIds.length
       ? await admin
@@ -188,7 +346,18 @@ export async function GET(request: Request) {
     if (marksError) {
       return NextResponse.json({ error: marksError.message }, { status: 500 });
     }
-    return NextResponse.json({ exam, subjects, students, marks: marks ?? [] });
+
+    return NextResponse.json({
+      exam,
+      subjects,
+      students,
+      marks: marks ?? [],
+      total,
+      overallTotal,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    });
   } catch (error) {
     return NextResponse.json(
       {
@@ -221,10 +390,33 @@ export async function POST(request: Request) {
 
   const examId = typeof body.exam_id === "string" ? body.exam_id : "";
   const subjectId = typeof body.subject_id === "string" ? body.subject_id : "";
-  const studentId = typeof body.student_id === "string" ? body.student_id : "";
-  const isAbsent = body.is_absent === true;
-  if (!examId || !subjectId || !studentId) {
-    return NextResponse.json({ error: "Exam, subject, and student are required." }, { status: 400 });
+  const requestedMarks = body.marks;
+  const isBatch = Array.isArray(requestedMarks);
+  const markInputs: unknown[] = isBatch ? requestedMarks : [body];
+  if (!examId || !subjectId || markInputs.length === 0) {
+    return NextResponse.json(
+      { error: "Exam, subject, and at least one student mark are required." },
+      { status: 400 },
+    );
+  }
+  if (markInputs.length > 100) {
+    return NextResponse.json(
+      { error: "Save no more than 100 student marks at a time." },
+      { status: 400 },
+    );
+  }
+  if (!markInputs.every(isStudentMarkInput)) {
+    return NextResponse.json({ error: "Invalid student mark data." }, { status: 400 });
+  }
+  const studentMarks = markInputs;
+  const studentIds = studentMarks.map((mark) =>
+    typeof mark.student_id === "string" ? mark.student_id : "",
+  );
+  if (studentIds.some((id) => !id) || new Set(studentIds).size !== studentIds.length) {
+    return NextResponse.json(
+      { error: "Each mark must have a unique student." },
+      { status: 400 },
+    );
   }
 
   const { data: exam, error: examError } = await admin
@@ -274,59 +466,93 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
-  if (!eligibleStudents.some((student) => student.id === studentId)) {
-    return NextResponse.json({ error: "This student is not enrolled in the selected subject." }, { status: 403 });
-  }
-
-  const theory = isAbsent ? null : body.theory_score;
-  const practical = isAbsent ? null : body.practical_score;
-  if (!isAbsent && !isScore(theory, 100)) {
-    return NextResponse.json({ error: "Theory marks must be between 0 and 100." }, { status: 400 });
-  }
-  if (subjectHasPractical) {
-    if (!isAbsent && !isScore(practical, 50)) {
-      return NextResponse.json({ error: "Practical marks must be between 0 and 50." }, { status: 400 });
+  const eligibleStudentIds = new Set(eligibleStudents.map((student) => student.id));
+  const rows = [];
+  for (const mark of studentMarks) {
+    const studentId = mark.student_id as string;
+    if (!eligibleStudentIds.has(studentId)) {
+      return NextResponse.json(
+        { error: `Student ${studentId} is not enrolled in the selected subject.` },
+        { status: 403 },
+      );
     }
-  } else if (body.practical_score !== undefined && body.practical_score !== null) {
-    return NextResponse.json({ error: "This examination does not include practical marks." }, { status: 400 });
+
+    const isAbsent = mark.is_absent === true;
+    const theory = isAbsent ? null : mark.theory_score;
+    const practical = isAbsent ? null : mark.practical_score;
+    if (!isAbsent && !isScore(theory, 100)) {
+      return NextResponse.json(
+        { error: `Theory marks must be between 0 and 100 for student ${studentId}.` },
+        { status: 400 },
+      );
+    }
+    if (subjectHasPractical) {
+      if (!isAbsent && !isScore(practical, 50)) {
+        return NextResponse.json(
+          { error: `Practical marks must be between 0 and 50 for student ${studentId}.` },
+          { status: 400 },
+        );
+      }
+    } else if (mark.practical_score !== undefined && mark.practical_score !== null) {
+      return NextResponse.json(
+        { error: "This examination does not include practical marks." },
+        { status: 400 },
+      );
+    }
+
+    const theoryScore = isAbsent ? null : isScore(theory, 100) ? theory : null;
+    const practicalScore =
+      subjectHasPractical && !isAbsent && isScore(practical, 50)
+        ? practical
+        : null;
+    if (!isAbsent && theoryScore === null) {
+      return NextResponse.json(
+        { error: `Theory marks are required for student ${studentId}.` },
+        { status: 400 },
+      );
+    }
+    if (subjectHasPractical && !isAbsent && practicalScore === null) {
+      return NextResponse.json(
+        { error: `Practical marks are required for student ${studentId}.` },
+        { status: 400 },
+      );
+    }
+    rows.push({
+      exam_id: examId,
+      subject_id: subjectId,
+      student_id: studentId,
+      theory_score: theoryScore,
+      practical_score: practicalScore,
+      total_score:
+        isAbsent || theoryScore === null
+          ? null
+          : theoryScore + (practicalScore ?? 0),
+      is_absent: isAbsent,
+      entered_by: user.id,
+      updated_at: new Date().toISOString(),
+    });
   }
 
-  const theoryScore = isAbsent ? null : isScore(theory, 100) ? theory : null;
-  const practicalScore =
-    subjectHasPractical && !isAbsent && isScore(practical, 50)
-      ? practical
-      : null;
-  if (!isAbsent && theoryScore === null) {
-    return NextResponse.json({ error: "Theory marks are required." }, { status: 400 });
-  }
-  if (subjectHasPractical && !isAbsent && practicalScore === null) {
-    return NextResponse.json({ error: "Practical marks are required." }, { status: 400 });
-  }
-  const totalScore =
-    isAbsent || theoryScore === null
-      ? null
-      : theoryScore + (practicalScore ?? 0);
-  const { data: mark, error: markError } = await admin
+  const { data: marks, error: markError } = await admin
     .from("marks")
     .upsert(
-      {
-        exam_id: examId,
-        subject_id: subjectId,
-        student_id: studentId,
-        theory_score: theoryScore,
-        practical_score: practicalScore,
-        total_score: totalScore,
-        is_absent: isAbsent,
-        entered_by: user.id,
-        updated_at: new Date().toISOString(),
-      },
+      rows,
       { onConflict: "exam_id,student_id,subject_id" },
     )
     .select("student_id, theory_score, practical_score, is_absent")
-    .single();
+    ;
   if (markError) {
     return NextResponse.json({ error: markError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ mark });
+  if (!marks || marks.length !== rows.length) {
+    return NextResponse.json(
+      { error: "Not all student marks were saved. Please check and try again." },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json(
+    isBatch ? { marks } : { mark: marks[0] },
+  );
 }

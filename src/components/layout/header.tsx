@@ -1,7 +1,6 @@
 "use client";
 
 import { Menu } from "lucide-react";
-import { useEffect, useState } from "react";
 import { UserMenu } from "./user-menu";
 
 export function Header({
@@ -11,25 +10,9 @@ export function Header({
   title: string;
   user: { name: string; email: string; role: string };
 }) {
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    const sync = () => setOpen(document.body.classList.contains("mobile-nav-open"));
-    sync();
-
-    const observer = new MutationObserver(sync);
-    observer.observe(document.body, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-
-    return () => observer.disconnect();
-  }, []);
-
   const toggleMenu = () => {
     const next = !document.body.classList.contains("mobile-nav-open");
     document.body.classList.toggle("mobile-nav-open", next);
-    setOpen(next);
   };
 
   return (

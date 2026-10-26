@@ -635,7 +635,7 @@ export function ExamResultsPage({
             <p className="text-sm font-semibold">{exam.class_form}</p>
           </header>
 
-          <section className="report-division-layout grid min-w-0 gap-2 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.5fr)]">
+          <section className="report-division-layout min-w-0 space-y-2">
             <div className="report-division-summary min-w-0 overflow-hidden rounded border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900">
               <table className="report-division-table w-full table-fixed border-collapse text-center text-xs">
                 <thead className="bg-slate-800 text-white dark:bg-slate-700">
@@ -660,7 +660,7 @@ export function ExamResultsPage({
               ].map(([label, value]) => (
                 <div key={label} className="min-w-0 rounded border border-slate-300 border-l-2 border-l-slate-800 bg-white px-3 py-2 dark:border-slate-700 dark:border-l-slate-400 dark:bg-slate-900">
                   <p className="break-words text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</p>
-                  <p className="mt-0.5 break-words text-lg font-extrabold text-slate-950 dark:text-white">{value}</p>
+                  <p className="mt-0.5 break-words text-base font-bold text-slate-950 dark:text-white">{value}</p>
                 </div>
               ))}
             </div>

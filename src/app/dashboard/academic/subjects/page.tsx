@@ -156,7 +156,12 @@ export default function SubjectsPage() {
     setDeleting(false);
 
     if (deleteError) {
-      showToast("error", deleteError.message);
+      showToast(
+        "error",
+        deleteError.code === "23503"
+          ? "This subject is used by classes, examinations, or marks and cannot be deleted."
+          : deleteError.message,
+      );
       return;
     }
 
@@ -169,14 +174,14 @@ export default function SubjectsPage() {
     <>
       <div className="space-y-4 sm:space-y-6">
         <div>
-          <h2 className="text-xl font-bold text-gray-900 sm:text-2xl">Subjects</h2>
+          <h2 className="text-lg font-bold text-gray-900 sm:text-xl">Subjects</h2>
           <p className="mt-1 text-sm text-gray-600">
             Register subjects with a unique code and indicate whether they have practical.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6">
-          <div className="h-fit rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+        <div className="space-y-4">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
             <h3 className="text-lg font-semibold text-gray-900">Add Subject</h3>
             <p className="mt-1 text-sm text-gray-600">New subject details</p>
             <form onSubmit={handleAddSubject} className="mt-4 space-y-4">
@@ -235,7 +240,7 @@ export default function SubjectsPage() {
             </form>
           </div>
 
-          <div className="min-w-0 lg:col-span-2">
+          <div className="min-w-0">
             <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
               <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-4 py-4 sm:px-6">
                 <div>

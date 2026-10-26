@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -9,8 +9,22 @@ export async function GET() {
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
   if (!profile) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
+  const { searchParams } = new URL(request.url);
+  const page = Math.max(1, Number.parseInt(searchParams.get("page") ?? "", 10) || 1);
+  const pageSize = Math.min(
+    100,
+    Math.max(1, Number.parseInt(searchParams.get("pageSize") ?? "", 10) || 20),
+  );
+  const search = (searchParams.get("search") ?? "")
+    .replace(/[,()%]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const form = searchParams.get("form")?.trim() ?? "";
+  const status = searchParams.get("status")?.trim() ?? "";
+  const from = (page - 1) * pageSize;
+
+  let classForms: string[] = [];
   if (profile.role === 'teacher') {
-    // Get teacher assignments
     const { data: assignments, error: assignmentsError } = await supabase
       .from('teaching_assignments')
       .select('class_name, subject_name')
@@ -19,29 +33,102 @@ export async function GET() {
       return NextResponse.json({ error: assignmentsError.message }, { status: 500 });
     }
 
-    const classForms = [...new Set(assignments?.map(a => a.class_name) || [])];
-    if (classForms.length === 0) return NextResponse.json({ exams: [] });
-
-    const { data: exams, error: examsError } = await supabase
-      .from('exams')
-      .select('*')
-      .in('class_form', classForms)
-      .eq('status', 'Active')
-      .order('created_at', { ascending: false });
-    if (examsError) {
-      return NextResponse.json({ error: examsError.message }, { status: 500 });
+    classForms = [...new Set(assignments?.map(a => a.class_name) || [])];
+    if (classForms.length === 0) {
+      return NextResponse.json({
+        exams: [],
+        total: 0,
+        overallTotal: 0,
+        page: 1,
+        pageSize,
+        totalPages: 1,
+      });
     }
-
-    return NextResponse.json({ exams: exams || [] });
   }
 
-  const { data: exams, error } = await supabase
-    .from('exams')
-    .select('*')
-    .order('created_at', { ascending: false });
+  const buildQuery = (head = false) => {
+    let query = head
+      ? supabase.from('exams').select('id', { count: "exact", head: true })
+      : supabase.from('exams').select('*', { count: "exact" });
+    if (profile.role === 'teacher') {
+      query = query.in('class_form', classForms);
+      if (status === 'Active' || status === 'Processed') {
+        query = query.eq('status', status);
+      } else {
+        query = query.in('status', ['Active', 'Processed']);
+      }
+    } else if (status) {
+      query = query.eq('status', status);
+    }
+    if (form) query = query.eq('class_form', form);
+    if (search) {
+      query = query.or(
+        `name.ilike.%${search}%,class_form.ilike.%${search}%,academic_year.ilike.%${search}%`,
+      );
+    }
+    return query;
+  };
+
+  const buildOverallQuery = () => {
+    let query = supabase
+      .from("exams")
+      .select("id", { count: "exact", head: true });
+    if (profile.role === "teacher") {
+      query = query
+        .in("class_form", classForms)
+        .in("status", ["Active", "Processed"]);
+    }
+    return query;
+  };
+
+  const [{ data: exams, count, error }, { count: overallTotal }] =
+    await Promise.all([
+      buildQuery()
+        .order('created_at', { ascending: false })
+        .order('id')
+        .range(from, from + pageSize - 1),
+      buildOverallQuery(),
+    ]);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ exams: exams || [] });
+  const total = count ?? 0;
+
+  const statusCounts: Record<string, number> = {
+    Draft: 0,
+    Active: 0,
+    Processed: 0,
+  };
+  const statusesToCount =
+    profile.role === "teacher" ? ["Active", "Processed"] : Object.keys(statusCounts);
+  await Promise.all(
+    statusesToCount.map(async (examStatus) => {
+      let query = supabase
+        .from("exams")
+        .select("id", { count: "exact", head: true })
+        .eq("status", examStatus);
+      if (profile.role === "teacher") {
+        query = query.in("class_form", classForms);
+      }
+      if (form) query = query.eq("class_form", form);
+      if (search) {
+        query = query.or(
+          `name.ilike.%${search}%,class_form.ilike.%${search}%,academic_year.ilike.%${search}%`,
+        );
+      }
+      const { count: statusTotal, error: statusError } = await query;
+      statusCounts[examStatus] = statusError ? 0 : statusTotal ?? 0;
+    }),
+  );
+
+  return NextResponse.json({
+    exams: exams || [],
+    total,
+    overallTotal: overallTotal ?? 0,
+    statusCounts,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  });
 }
 
 export async function POST(request: Request) {

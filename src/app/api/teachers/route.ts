@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -22,18 +22,58 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const { searchParams } = new URL(request.url);
+  const page = Math.max(1, Number.parseInt(searchParams.get("page") ?? "", 10) || 1);
+  const pageSize = Math.min(
+    100,
+    Math.max(1, Number.parseInt(searchParams.get("pageSize") ?? "", 10) || 20),
+  );
+  const search = (searchParams.get("search") ?? "")
+    .replace(/[,()%]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
   const adminSupabase = createAdminClient();
-  const { data: teachers, error } = await adminSupabase
+  let query = adminSupabase
     .from("profiles")
-    .select("id, first_name, middle_name, last_name, full_name, email, sex, phone")
-    .eq("role", "teacher")
-    .order("created_at", { ascending: false });
+    .select(
+      "id, first_name, middle_name, last_name, full_name, email, sex, phone",
+      { count: "exact" },
+    )
+    .eq("role", "teacher");
+
+  if (search) {
+    query = query.or(
+      `full_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`,
+    );
+  }
+
+  const from = (page - 1) * pageSize;
+  const [{ data: teachers, count, error }, { count: overallTotal }] =
+    await Promise.all([
+      query
+        .order("created_at", { ascending: false })
+        .order("id")
+        .range(from, from + pageSize - 1),
+      adminSupabase
+        .from("profiles")
+        .select("id", { count: "exact", head: true })
+        .eq("role", "teacher"),
+    ]);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ teachers });
+  const total = count ?? 0;
+  return NextResponse.json({
+    teachers: teachers ?? [],
+    total,
+    overallTotal: overallTotal ?? 0,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  });
 }
 
 export async function POST(request: Request) {
