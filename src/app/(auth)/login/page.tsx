@@ -61,14 +61,14 @@ export default function LoginPage() {
                 <GraduationCap className="h-6 w-6" />
               </div>
               <p className="mt-8 text-sm font-medium uppercase tracking-[0.22em] text-blue-300">
-                Ndulungu Secondary School
+                Ndulungu RMS · Staff Portal
               </p>
               <h1 className="mt-4 max-w-md text-4xl font-semibold leading-tight tracking-tight xl:text-5xl">
-                Every result tells a story.
+                Your school, in one secure place.
               </h1>
               <p className="mt-5 max-w-sm text-base leading-7 text-slate-300">
-                Manage classes, students, subjects, and academic results in one
-                secure place.
+                Sign in to manage classes, students, subjects, and academic
+                results.
               </p>
             </div>
             <p className="relative text-sm text-slate-400">
@@ -83,17 +83,19 @@ export default function LoginPage() {
                   <GraduationCap className="h-5 w-5" />
                 </div>
                 <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-700">
-                  Ndulungu Secondary School
+                  Ndulungu RMS · Staff Portal
                 </p>
               </div>
 
               <div className="mb-5">
-                <p className="text-sm font-semibold text-blue-700">Welcome back</p>
+                <p className="text-sm font-semibold text-blue-700">
+                  Ndulungu Secondary School
+                </p>
                 <h2 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
-                  Sign in to your account
+                  Welcome to Ndulungu RMS
                 </h2>
                 <p className="mt-1.5 text-sm leading-6 text-slate-500">
-                  Enter your school email and password to continue.
+                  Sign in with your school email and password to continue.
                 </p>
               </div>
 
