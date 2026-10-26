@@ -46,6 +46,7 @@ export async function PUT(
     email?: unknown;
     sex?: unknown;
     phone?: unknown;
+    role?: unknown;
   };
   try {
     body = await request.json();
@@ -64,6 +65,7 @@ export async function PUT(
   const sex = body.sex;
   const phone =
     typeof body.phone === "string" ? body.phone.trim() : "";
+  const role = body.role;
 
   if (!firstName || !lastName) {
     return NextResponse.json(
@@ -80,6 +82,12 @@ export async function PUT(
   if (sex !== "M" && sex !== "F") {
     return NextResponse.json({ error: "Sex must be M or F." }, { status: 400 });
   }
+  if (role !== "teacher" && role !== "academic") {
+    return NextResponse.json(
+      { error: "Role must be Teacher or Academic." },
+      { status: 400 },
+    );
+  }
 
   const adminSupabase = createAdminClient();
   const { data: target, error: targetError } = await adminSupabase
@@ -91,11 +99,11 @@ export async function PUT(
     return NextResponse.json({ error: targetError.message }, { status: 500 });
   }
   if (!target) {
-    return NextResponse.json({ error: "Teacher not found." }, { status: 404 });
+    return NextResponse.json({ error: "Staff account not found." }, { status: 404 });
   }
-  if (target.role !== "teacher") {
+  if (target.role !== "teacher" && target.role !== "academic") {
     return NextResponse.json(
-      { error: "Only teacher accounts can be updated here." },
+      { error: "Only staff accounts can be updated here." },
       { status: 400 },
     );
   }
@@ -122,6 +130,7 @@ export async function PUT(
       email,
       sex,
       phone: phone || null,
+      role,
     })
     .eq("id", id);
 
@@ -161,9 +170,9 @@ export async function DELETE(
   if (!target) {
     return NextResponse.json({ error: "Teacher not found." }, { status: 404 });
   }
-  if (target.role !== "teacher") {
+  if (target.role !== "teacher" && target.role !== "academic") {
     return NextResponse.json(
-      { error: "Only teacher accounts can be deleted here." },
+      { error: "Only staff accounts can be deleted here." },
       { status: 400 },
     );
   }

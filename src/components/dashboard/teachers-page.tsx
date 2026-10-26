@@ -26,6 +26,7 @@ interface Teacher {
   email: string | null;
   sex: string;
   phone: string | null;
+  role: "teacher" | "academic";
 }
 
 interface Assignment {
@@ -81,6 +82,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
     password: "",
     sex: "M",
     phone: "",
+    role: "teacher" as "teacher" | "academic",
   });
   const [selectedForms, setSelectedForms] = useState<Set<string>>(new Set());
   const [selectedAssignmentKeys, setSelectedAssignmentKeys] = useState<Set<string>>(
@@ -215,6 +217,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
       password: "",
       sex: "M",
       phone: "",
+      role: "teacher",
     });
     setShowTeacherModal(true);
   };
@@ -229,6 +232,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
       password: "",
       sex: teacher.sex,
       phone: teacher.phone || "",
+      role: teacher.role,
     });
     setShowTeacherModal(true);
   };
@@ -266,16 +270,21 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
       );
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || "Unable to save the teacher.");
+        throw new Error(data.error || "Unable to save the staff account.");
       }
 
       setShowTeacherModal(false);
-      showToast("success", editing ? "Teacher updated successfully." : "Teacher added successfully.");
+      showToast(
+        "success",
+        editing ? "Staff account updated successfully." : "Staff account added successfully.",
+      );
       await refreshAll();
     } catch (saveError) {
       showToast(
         "error",
-        saveError instanceof Error ? saveError.message : "Unable to save the teacher.",
+        saveError instanceof Error
+          ? saveError.message
+          : "Unable to save the staff account.",
       );
     }
   };
@@ -293,7 +302,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
       });
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || "Unable to delete the teacher.");
+        throw new Error(data.error || "Unable to delete the staff account.");
       }
       showToast("success", `${confirmTeacher.full_name} was deleted successfully.`);
       setConfirmTeacher(null);
@@ -301,7 +310,9 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
     } catch (deleteError) {
       showToast(
         "error",
-        deleteError instanceof Error ? deleteError.message : "Unable to delete the teacher.",
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Unable to delete the staff account.",
       );
       setConfirmTeacher(null);
     }
@@ -414,11 +425,11 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
               Staff directory
             </span>
             <h2 className="mt-2 text-xl font-bold tracking-tight sm:text-2xl">
-              Teachers
+              {canManageTeachers ? "Staff accounts" : "Teachers"}
             </h2>
             <p className="mt-2 max-w-xl text-sm leading-6 text-blue-100/90 sm:text-base">
               {canManageTeachers
-                ? "Manage staff profiles, contact information, and teaching assignments."
+                ? "Manage staff profiles, roles, contact information, and teaching assignments."
                 : "Browse the teaching team and manage class subject assignments."}
             </p>
           </div>
@@ -429,7 +440,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
               className="inline-flex min-h-12 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-5 text-sm font-bold text-blue-900 shadow-sm transition hover:bg-blue-50 sm:w-auto"
             >
               <Plus className="h-4 w-4" />
-              Add teacher
+              Add staff member
             </button>
           )}
         </div>
@@ -437,7 +448,9 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-          <p className="text-sm text-slate-500">Total teachers</p>
+          <p className="text-sm text-slate-500">
+            {canManageTeachers ? "Total staff accounts" : "Total teachers"}
+          </p>
           <p className="mt-1 text-xl font-bold text-slate-950">{overallTotal}</p>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
@@ -457,14 +470,14 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search by teacher name, email, or phone"
+            placeholder={`Search by ${canManageTeachers ? "staff" : "teacher"} name, email, or phone`}
             className="min-h-12 w-full rounded-xl border border-slate-300 bg-slate-50 pl-10 pr-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
           />
         </label>
 
         {loading || teachersLoading ? (
           <LoadingIndicator
-            label="Loading teacher information..."
+            label={`Loading ${canManageTeachers ? "staff" : "teacher"} information...`}
             className="rounded-2xl border border-slate-100 bg-slate-50 p-8"
           />
         ) : visibleTeachers.length === 0 ? (
@@ -473,11 +486,17 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
               <Users className="h-7 w-7" />
             </span>
             <h3 className="mt-4 font-semibold text-slate-900">
-              {overallTotal === 0 ? "No teachers added yet" : "No matching teachers"}
+              {overallTotal === 0
+                ? canManageTeachers
+                  ? "No staff accounts added yet"
+                  : "No teachers added yet"
+                : `No matching ${canManageTeachers ? "staff accounts" : "teachers"}`}
             </h3>
             <p className="mt-1 text-sm text-slate-500">
               {overallTotal === 0
-                ? "Add a teacher to build your school staff directory."
+                ? canManageTeachers
+                  ? "Add a staff account to build your school directory."
+                  : "Add a teacher to build your school staff directory."
                 : "Try searching with a different name or contact detail."}
             </p>
             {canManageTeachers && overallTotal === 0 && (
@@ -487,7 +506,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
                 className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800"
               >
                 <Plus className="h-4 w-4" />
-                Add first teacher
+                {canManageTeachers ? "Add first staff member" : "Add first teacher"}
               </button>
             )}
           </div>
@@ -527,6 +546,11 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
                           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
                             {teacher.sex === "M" ? "Male" : "Female"}
                           </span>
+                          {canManageTeachers && (
+                            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold capitalize text-blue-800">
+                              {teacher.role}
+                            </span>
+                          )}
                         </div>
                         <div className="mt-2 grid gap-1.5 text-sm text-slate-600 sm:grid-cols-2">
                           <p className="flex min-w-0 items-center gap-2">
@@ -541,61 +565,65 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
                       </div>
                     </div>
 
-                    <div className="rounded-xl bg-slate-50 p-3">
-                      <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                        <BookOpen className="h-3.5 w-3.5" />
-                        Teaching assignments
-                      </p>
-                      {assignmentsByClass.size ? (
-                        <div className="mt-2 space-y-2">
-                          {[...assignmentsByClass].map(([className, classAssignments]) => (
-                            <div
-                              key={className}
-                              className="flex flex-col gap-1.5 sm:flex-row sm:items-start"
-                            >
-                              <span className="shrink-0 pt-1 text-xs font-bold text-slate-700 sm:w-16">
-                                {className}
-                              </span>
-                              <div className="flex flex-wrap gap-1.5">
-                                {classAssignments.map((assignment) => (
-                                  <span
-                                    key={assignment.id}
-                                    className="inline-flex max-w-full items-center gap-1 rounded-lg border border-violet-100 bg-white py-1 pl-2.5 pr-1 text-xs font-medium text-violet-800"
-                                  >
-                                    <span className="truncate">
-                                      {assignment.subject_name}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => void deleteAssignment(assignment)}
-                                      aria-label={`Remove ${assignment.class_name} ${assignment.subject_name} assignment`}
-                                      title="Remove assignment"
-                                      className="rounded-md p-1 text-violet-600 hover:bg-rose-50 hover:text-rose-700"
-                                    >
-                                      <X className="h-3.5 w-3.5" />
-                                    </button>
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="mt-2 text-xs text-slate-500">
-                          No teaching assignments yet.
+                    {teacher.role === "teacher" && (
+                      <div className="rounded-xl bg-slate-50 p-3">
+                        <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                          <BookOpen className="h-3.5 w-3.5" />
+                          Teaching assignments
                         </p>
-                      )}
-                    </div>
+                        {assignmentsByClass.size ? (
+                          <div className="mt-2 space-y-2">
+                            {[...assignmentsByClass].map(([className, classAssignments]) => (
+                              <div
+                                key={className}
+                                className="flex flex-col gap-1.5 sm:flex-row sm:items-start"
+                              >
+                                <span className="shrink-0 pt-1 text-xs font-bold text-slate-700 sm:w-16">
+                                  {className}
+                                </span>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {classAssignments.map((assignment) => (
+                                    <span
+                                      key={assignment.id}
+                                      className="inline-flex max-w-full items-center gap-1 rounded-lg border border-violet-100 bg-white py-1 pl-2.5 pr-1 text-xs font-medium text-violet-800"
+                                    >
+                                      <span className="truncate">
+                                        {assignment.subject_name}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => void deleteAssignment(assignment)}
+                                        aria-label={`Remove ${assignment.class_name} ${assignment.subject_name} assignment`}
+                                        title="Remove assignment"
+                                        className="rounded-md p-1 text-violet-600 hover:bg-rose-50 hover:text-rose-700"
+                                      >
+                                        <X className="h-3.5 w-3.5" />
+                                      </button>
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="mt-2 text-xs text-slate-500">
+                            No teaching assignments yet.
+                          </p>
+                        )}
+                      </div>
+                    )}
 
                     <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-3">
-                      <button
-                        type="button"
-                        onClick={() => openAssignmentModal(teacher)}
-                        className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100"
-                      >
-                        <Plus className="h-4 w-4" />
-                        Assign classes & subjects
-                      </button>
+                      {teacher.role === "teacher" && (
+                        <button
+                          type="button"
+                          onClick={() => openAssignmentModal(teacher)}
+                          className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100"
+                        >
+                          <Plus className="h-4 w-4" />
+                          Assign classes & subjects
+                        </button>
+                      )}
                       {canManageTeachers && (
                         <>
                           <button
@@ -695,7 +723,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
               <div>
                 <p className="text-xs font-bold uppercase tracking-wider text-blue-700">Staff directory</p>
                 <h3 className="mt-1 text-lg font-bold text-slate-950">
-                {editing ? "Edit Teacher" : "Add Teacher"}
+                  {editing ? "Edit staff account" : "Add staff account"}
                 </h3>
               </div>
               <button
@@ -759,6 +787,29 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
                   <option value="F">Female</option>
                 </select>
               </div>
+              {canManageTeachers && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Role *
+                  </label>
+                  <select
+                    value={form.role}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        role:
+                          event.currentTarget.value === "academic"
+                            ? "academic"
+                            : "teacher",
+                      })
+                    }
+                    className={inputClassName}
+                  >
+                    <option value="teacher">Teacher</option>
+                    <option value="academic">Academic</option>
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">
                   Email {!editing && "*"}
@@ -812,7 +863,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
                 onClick={() => void saveTeacher()}
                 className="inline-flex min-h-11 items-center justify-center rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white transition hover:bg-blue-800"
               >
-                Save Teacher
+                Save staff account
               </button>
             </div>
           </div>

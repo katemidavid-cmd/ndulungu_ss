@@ -22,6 +22,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const staffRoles = profile.role === "headmaster" ? ["teacher", "academic"] : ["teacher"];
   const { searchParams } = new URL(request.url);
   const page = Math.max(1, Number.parseInt(searchParams.get("page") ?? "", 10) || 1);
   const pageSize = Math.min(
@@ -37,10 +38,10 @@ export async function GET(request: Request) {
   let query = adminSupabase
     .from("profiles")
     .select(
-      "id, first_name, middle_name, last_name, full_name, email, sex, phone",
+      "id, first_name, middle_name, last_name, full_name, email, sex, phone, role",
       { count: "exact" },
     )
-    .eq("role", "teacher");
+    .in("role", staffRoles);
 
   if (search) {
     query = query.or(
@@ -58,7 +59,7 @@ export async function GET(request: Request) {
       adminSupabase
         .from("profiles")
         .select("id", { count: "exact", head: true })
-        .eq("role", "teacher"),
+        .in("role", staffRoles),
     ]);
 
   if (error) {
@@ -97,10 +98,25 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { first_name, middle_name, last_name, email, password, sex, phone } = body;
+  const {
+    first_name,
+    middle_name,
+    last_name,
+    email,
+    password,
+    sex,
+    phone,
+    role = "teacher",
+  } = body;
 
   if (!first_name || !last_name || !email || !password || !sex) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  }
+  if (role !== "teacher" && role !== "academic") {
+    return NextResponse.json(
+      { error: "Role must be Teacher or Academic." },
+      { status: 400 },
+    );
   }
 
   const adminSupabase = createAdminClient();
@@ -122,7 +138,7 @@ export async function POST(request: Request) {
     sex,
     phone: phone || null,
     email,
-    role: "teacher",
+    role,
   });
 
   if (profileError) {
