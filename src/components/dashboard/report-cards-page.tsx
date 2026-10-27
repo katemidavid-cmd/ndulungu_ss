@@ -69,7 +69,6 @@ type Student = {
   id: string;
   full_name: string;
   sex: "M" | "F";
-  admission_no: string | null;
   form: string | null;
   stream: string | null;
 };
@@ -337,7 +336,7 @@ export function ReportCardsPage() {
     let active = true;
     async function loadExams() {
       try {
-        const response = await fetch("/api/exams?pageSize=100");
+        const response = await fetch("/api/exams?pageSize=100&year=all");
         const body = (await response.json()) as { exams?: Exam[]; error?: string };
         if (!response.ok) throw new Error(body.error || "Unable to load examinations.");
         if (!active) return;

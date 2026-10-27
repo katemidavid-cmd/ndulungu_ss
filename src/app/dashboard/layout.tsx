@@ -17,26 +17,33 @@ export default async function DashboardLayout({
 
   const supabase = await createClient();
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
 
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name, role, email")
-    .eq("id", user.id)
-    .single();
-  const { data: schoolSettings } = await supabase
-    .from("school_settings")
-    .select("school_name, school_logo_url, union_logo_url")
-    .eq("id", 1)
-    .maybeSingle();
-  const { data: academicPeriod, error: academicPeriodError } = await supabase
-    .from("academic_period_settings")
-    .select("academic_year, term")
-    .eq("id", 1)
-    .maybeSingle();
+  const [
+    { data: profile },
+    { data: schoolSettings },
+    { data: academicPeriod, error: academicPeriodError },
+  ] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("full_name, role, email")
+      .eq("id", user.id)
+      .single(),
+    supabase
+      .from("school_settings")
+      .select("school_name, school_logo_url, union_logo_url")
+      .eq("id", 1)
+      .maybeSingle(),
+    supabase
+      .from("academic_period_settings")
+      .select("academic_year, term")
+      .eq("id", 1)
+      .maybeSingle(),
+  ]);
 
   const role = profile?.role as "headmaster" | "academic" | "teacher";
 

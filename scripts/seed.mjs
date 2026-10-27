@@ -11,79 +11,102 @@ const supabase = createClient(
   }
 );
 
+const DEFAULT_PASSWORD = "Shule123!";
+
 const users = [
   {
-    email: "mkuu@shule.ac.tz",
-    password: "Mkuu123!",
+    email: "b2nyaso1988@gmail.com",
     profile: {
-      first_name: "Juma",
-      middle_name: "Hassan",
-      last_name: "Mwaipopo",
+      first_name: "ELIAS",
+      middle_name: "NYASO",
+      last_name: "MBWANA",
       sex: "M",
-      phone: "0754000001",
+      phone: "0712000001",
       role: "headmaster",
     },
   },
   {
-    email: "masomo@shule.ac.tz",
-    password: "Masomo123!",
+    email: "katemidavid@gmail.com",
     profile: {
-      first_name: "Asha",
-      middle_name: "Omari",
-      last_name: "Kimaro",
-      sex: "F",
-      phone: "0754000002",
+      first_name: "DAVID",
+      middle_name: "KATEMI",
+      last_name: "MWANGA",
+      sex: "M",
+      phone: "0712000002",
       role: "academic",
     },
   },
-  {
-    email: "mwalimu1@shule.ac.tz",
-    password: "Mwalimu123!",
-    profile: {
-      first_name: "Peter",
-      middle_name: "John",
-      last_name: "Mshana",
-      sex: "M",
-      phone: "0754000003",
-      role: "teacher",
-    },
-  },
-  {
-    email: "mwalimu2@shule.ac.tz",
-    password: "Mwalimu123!",
-    profile: {
-      first_name: "Rehema",
-      middle_name: "Salum",
-      last_name: "Nyerere",
-      sex: "F",
-      phone: "0754000004",
-      role: "teacher",
-    },
-  },
 ];
 
-const assignments = [
-  { teacherEmail: "mwalimu1@shule.ac.tz", class_name: "Form 1", subject_name: "Kiswahili" },
-  { teacherEmail: "mwalimu1@shule.ac.tz", class_name: "Form 2", subject_name: "Kiswahili" },
-  { teacherEmail: "mwalimu2@shule.ac.tz", class_name: "Form 1", subject_name: "Historia" },
-  { teacherEmail: "mwalimu2@shule.ac.tz", class_name: "Form 3", subject_name: "Historia" },
-];
+async function findUserByEmail(email) {
+  const { data, error } = await supabase.auth.admin.listUsers({
+    page: 1,
+    perPage: 1000,
+  });
+
+  if (error) throw error;
+
+  return data.users.find(
+    (user) => user.email?.toLowerCase() === email.toLowerCase()
+  );
+}
 
 async function seed() {
   for (const u of users) {
-    const { data, error } = await supabase.auth.admin.createUser({
-      email: u.email,
-      password: u.password,
-      email_confirm: true,
-    });
+    let user = await findUserByEmail(u.email);
 
-    if (error) {
-      console.log(`Kosa kuunda ${u.email}:`, error.message);
+    if (!user) {
+      const { data, error } = await supabase.auth.admin.createUser({
+        email: u.email,
+        password: DEFAULT_PASSWORD,
+        email_confirm: true,
+      });
+
+      if (error) {
+        console.log(`Kosa kuunda ${u.email}:`, error.message);
+        continue;
+      }
+
+      user = data.user;
+      console.log(
+        `Akaunti imeundwa: ${u.email} (password ya awali: ${DEFAULT_PASSWORD})`
+      );
+    }
+
+    if (user.app_metadata?.role !== u.profile.role) {
+      const { error: roleError } = await supabase.auth.admin.updateUserById(
+        user.id,
+        { app_metadata: { role: u.profile.role } }
+      );
+
+      if (roleError) {
+        console.log(
+          `Kosa kuweka role metadata ${u.email}:`,
+          roleError.message
+        );
+      } else {
+        console.log(`Role metadata imewekwa: ${u.email} (${u.profile.role})`);
+      }
+    }
+
+    const { data: existing, error: lookupError } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (lookupError) {
+      console.log(`Kosa kuangalia profile ${u.email}:`, lookupError.message);
+      continue;
+    }
+
+    if (existing) {
+      console.log(`Profile ipo tayari: ${u.email} (${u.profile.role})`);
       continue;
     }
 
     const { error: profileError } = await supabase.from("profiles").insert({
-      id: data.user.id,
+      id: user.id,
       first_name: u.profile.first_name,
       middle_name: u.profile.middle_name,
       last_name: u.profile.last_name,
@@ -98,25 +121,6 @@ async function seed() {
     } else {
       console.log(`Imekamilika: ${u.email} (${u.profile.role})`);
     }
-  }
-
-  // Assignments
-  const { data: profiles } = await supabase
-    .from("profiles")
-    .select("id, email");
-
-  const map = new Map(profiles?.map((p) => [p.email, p.id]));
-
-  for (const a of assignments) {
-    const teacher_id = map.get(a.teacherEmail);
-    if (!teacher_id) continue;
-    const { error } = await supabase.from("teaching_assignments").insert({
-      teacher_id,
-      class_name: a.class_name,
-      subject_name: a.subject_name,
-    });
-    if (error) console.log("Kosa assignment:", error.message);
-    else console.log(`Mgawo umewekwa: ${a.teacherEmail} -> ${a.class_name} ${a.subject_name}`);
   }
 
   console.log("Seed imekamilika.");

@@ -124,6 +124,7 @@ export async function POST(request: Request) {
     email,
     password,
     email_confirm: true,
+    app_metadata: { role },
   });
 
   if (authError || !authData.user) {

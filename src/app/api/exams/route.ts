@@ -21,7 +21,20 @@ export async function GET(request: Request) {
     .trim();
   const form = searchParams.get("form")?.trim() ?? "";
   const status = searchParams.get("status")?.trim() ?? "";
+  const requestedYear = (searchParams.get("year") ?? "").trim();
   const from = (page - 1) * pageSize;
+
+  const { data: activePeriod, error: periodError } = await supabase
+    .from("academic_period_settings")
+    .select("academic_year")
+    .eq("id", 1)
+    .maybeSingle();
+  if (periodError) {
+    return NextResponse.json({ error: periodError.message }, { status: 500 });
+  }
+  const activeYear = activePeriod?.academic_year ?? "";
+  const yearFilter =
+    requestedYear === "all" ? "" : requestedYear || activeYear;
 
   let classForms: string[] = [];
   if (profile.role === 'teacher') {
@@ -39,6 +52,10 @@ export async function GET(request: Request) {
         exams: [],
         total: 0,
         overallTotal: 0,
+        statusCounts: { Draft: 0, Active: 0, Processed: 0 },
+        availableYears: activeYear ? [activeYear] : [],
+        activeYear,
+        year: yearFilter || "all",
         page: 1,
         pageSize,
         totalPages: 1,
@@ -60,6 +77,7 @@ export async function GET(request: Request) {
     } else if (status) {
       query = query.eq('status', status);
     }
+    if (yearFilter) query = query.eq("academic_year", yearFilter);
     if (form) query = query.eq('class_form', form);
     if (search) {
       query = query.or(
@@ -78,20 +96,47 @@ export async function GET(request: Request) {
         .in("class_form", classForms)
         .in("status", ["Active", "Processed"]);
     }
+    if (yearFilter) query = query.eq("academic_year", yearFilter);
     return query;
   };
 
-  const [{ data: exams, count, error }, { count: overallTotal }] =
-    await Promise.all([
-      buildQuery()
-        .order('created_at', { ascending: false })
-        .order('id')
-        .range(from, from + pageSize - 1),
-      buildOverallQuery(),
-    ]);
+  const buildYearsQuery = () => {
+    let query = supabase
+      .from("exams")
+      .select("academic_year")
+      .order("academic_year", { ascending: false });
+    if (profile.role === "teacher") {
+      query = query.in("class_form", classForms);
+    }
+    return query;
+  };
+
+  const [
+    { data: exams, count, error },
+    { count: overallTotal },
+    { data: yearRows, error: yearsError },
+  ] = await Promise.all([
+    buildQuery()
+      .order('created_at', { ascending: false })
+      .order('id')
+      .range(from, from + pageSize - 1),
+    buildOverallQuery(),
+    buildYearsQuery(),
+  ]);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (yearsError) {
+    return NextResponse.json({ error: yearsError.message }, { status: 500 });
+  }
   const total = count ?? 0;
+  const availableYears = [
+    ...new Set(
+      [
+        ...(yearRows ?? []).map((row) => row.academic_year),
+        activeYear,
+      ].filter((year): year is string => Boolean(year)),
+    ),
+  ].sort((a, b) => b.localeCompare(a));
 
   const statusCounts: Record<string, number> = {
     Draft: 0,
@@ -109,6 +154,7 @@ export async function GET(request: Request) {
       if (profile.role === "teacher") {
         query = query.in("class_form", classForms);
       }
+      if (yearFilter) query = query.eq("academic_year", yearFilter);
       if (form) query = query.eq("class_form", form);
       if (search) {
         query = query.or(
@@ -125,6 +171,9 @@ export async function GET(request: Request) {
     total,
     overallTotal: overallTotal ?? 0,
     statusCounts,
+    availableYears,
+    activeYear,
+    year: yearFilter || "all",
     page,
     pageSize,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),

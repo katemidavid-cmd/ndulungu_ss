@@ -74,7 +74,7 @@ async function getEligibleStudents(
 
   const { data: students, error: studentsError } = await admin
     .from("students")
-    .select("id, full_name, admission_no, class_id")
+    .select("id, full_name, class_id")
     .in("class_id", classIds)
     .order("full_name");
   if (studentsError) throw new Error(studentsError.message);
@@ -118,12 +118,26 @@ export async function GET(request: Request) {
   if (!examId) {
     if (classForms.length === 0) return NextResponse.json({ exams: [] });
 
-    const { data: exams, error } = await admin
+    const { data: activePeriod, error: periodError } = await admin
+      .from("academic_period_settings")
+      .select("academic_year")
+      .eq("id", 1)
+      .maybeSingle();
+    if (periodError) {
+      return NextResponse.json({ error: periodError.message }, { status: 500 });
+    }
+
+    let examsQuery = admin
       .from("exams")
       .select("id, name, class_form, term, academic_year, start_date, end_date, has_practical, status")
       .in("class_form", classForms)
-      .eq("status", "Active")
-      .order("created_at", { ascending: false });
+      .eq("status", "Active");
+    if (activePeriod?.academic_year) {
+      examsQuery = examsQuery.eq("academic_year", activePeriod.academic_year);
+    }
+    const { data: exams, error } = await examsQuery.order("created_at", {
+      ascending: false,
+    });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ exams: exams ?? [] });
   }
@@ -247,7 +261,6 @@ export async function GET(request: Request) {
     type StudentRow = {
       id: string;
       full_name: string;
-      admission_no: string | null;
       class_id: string;
     };
 
@@ -258,12 +271,10 @@ export async function GET(request: Request) {
     if (classSubject.is_compulsory) {
       let listQuery = admin
         .from("students")
-        .select("id, full_name, admission_no, class_id", { count: "exact" })
+        .select("id, full_name, class_id", { count: "exact" })
         .in("class_id", classIds);
       if (search) {
-        listQuery = listQuery.or(
-          `full_name.ilike.%${search}%,admission_no.ilike.%${search}%`,
-        );
+        listQuery = listQuery.ilike("full_name", `%${search}%`);
       }
 
       const [listResult, overallResult] = await Promise.all([
@@ -289,16 +300,15 @@ export async function GET(request: Request) {
       let listQuery = admin
         .from("student_subjects")
         .select(
-          "student_id, students!inner(id, full_name, admission_no, class_id)",
+          "student_id, students!inner(id, full_name, class_id)",
           { count: "exact" },
         )
         .eq("subject_id", subjectId)
         .in("students.class_id", classIds);
       if (search) {
-        listQuery = listQuery.or(
-          `full_name.ilike.%${search}%,admission_no.ilike.%${search}%`,
-          { referencedTable: "students" },
-        );
+        listQuery = listQuery.or(`full_name.ilike.%${search}%`, {
+          referencedTable: "students",
+        });
       }
 
       const [listResult, overallResult] = await Promise.all([

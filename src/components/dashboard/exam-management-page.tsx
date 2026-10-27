@@ -92,6 +92,8 @@ export function ExamManagementPage({
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
   const [overallTotal, setOverallTotal] = useState(0);
+  const [selectedYear, setSelectedYear] = useState("");
+  const [availableYears, setAvailableYears] = useState<string[]>([]);
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({
     Draft: 0,
     Active: 0,
@@ -168,7 +170,7 @@ export function ExamManagementPage({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPage(1);
-  }, [debouncedSearch, pageSize, statusFilter]);
+  }, [debouncedSearch, pageSize, statusFilter, selectedYear]);
 
   useEffect(() => {
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -185,6 +187,7 @@ export function ExamManagementPage({
       });
       if (debouncedSearch) params.set("search", debouncedSearch);
       if (statusFilter !== "All") params.set("status", statusFilter);
+      if (selectedYear) params.set("year", selectedYear);
 
       const response = await fetch(`/api/exams?${params.toString()}`);
       const data = await response.json();
@@ -195,6 +198,7 @@ export function ExamManagementPage({
       setExams((data.exams ?? []) as Exam[]);
       setTotal(data.total ?? 0);
       setOverallTotal(data.overallTotal ?? 0);
+      setAvailableYears((data.availableYears ?? []) as string[]);
       setStatusCounts(
         (data.statusCounts ?? { Draft: 0, Active: 0, Processed: 0 }) as Record<
           string,
@@ -209,7 +213,7 @@ export function ExamManagementPage({
     } finally {
       setExamsLoading(false);
     }
-  }, [debouncedSearch, page, pageSize, statusFilter]);
+  }, [debouncedSearch, page, pageSize, selectedYear, statusFilter]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -286,6 +290,7 @@ export function ExamManagementPage({
         has_practical: false,
       }));
       closeCreateForm();
+      setSelectedYear("");
       await refreshAll();
     } catch (error) {
       notify(
@@ -409,17 +414,40 @@ export function ExamManagementPage({
               className={`${inputClass} pl-10`}
             />
           </label>
-          <select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
-            className={`${inputClass} sm:w-48`}
-            aria-label="Filter exams by status"
-          >
-            <option>All</option>
-            {canManageExams && <option>Draft</option>}
-            <option>Active</option>
-            <option>Processed</option>
-          </select>
+          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+            <select
+              value={selectedYear}
+              onChange={(event) => setSelectedYear(event.target.value)}
+              className={`${inputClass} sm:w-56`}
+              aria-label="Filter exams by academic year"
+            >
+              <option value="">
+                Current year
+                {activePeriod?.academic_year
+                  ? ` (${activePeriod.academic_year})`
+                  : ""}
+              </option>
+              <option value="all">All years</option>
+              {availableYears
+                .filter((year) => year !== activePeriod?.academic_year)
+                .map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+            </select>
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className={`${inputClass} sm:w-48`}
+              aria-label="Filter exams by status"
+            >
+              <option>All</option>
+              {canManageExams && <option>Draft</option>}
+              <option>Active</option>
+              <option>Processed</option>
+            </select>
+          </div>
         </div>
 
         {loading || examsLoading ? (
@@ -432,7 +460,11 @@ export function ExamManagementPage({
               <GraduationCap className="h-7 w-7" />
             </span>
             <h3 className="mt-4 font-semibold text-slate-900">
-              {overallTotal === 0 ? "No examinations yet" : "No matching examinations"}
+              {overallTotal === 0
+                ? selectedYear === "all"
+                  ? "No examinations yet"
+                  : "No examinations for this year"
+                : "No matching examinations"}
             </h3>
             <p className="mt-1 max-w-md text-sm leading-6 text-slate-500">
               {canManageExams

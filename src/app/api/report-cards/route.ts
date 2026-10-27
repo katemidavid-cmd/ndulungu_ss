@@ -91,6 +91,7 @@ export async function GET(request: Request) {
           "id, name, class_form, term, academic_year, start_date, end_date, status, created_at",
         )
         .eq("class_form", exam.class_form)
+        .eq("academic_year", exam.academic_year)
         .eq("status", "Processed")
         .order("start_date", { ascending: false })
         .order("created_at", { ascending: false })
@@ -121,7 +122,7 @@ export async function GET(request: Request) {
     studentIds.length
       ? admin
           .from("students")
-          .select("id, full_name, sex, admission_no, class_id")
+          .select("id, full_name, sex, class_id")
           .in("id", studentIds)
           .order("full_name")
       : Promise.resolve({ data: [], error: null }),
@@ -181,8 +182,7 @@ export async function GET(request: Request) {
       id: student.id,
       full_name: student.full_name,
       sex: student.sex,
-      admission_no: student.admission_no,
-      form: schoolClass?.form ?? exam.class_form,
+      form: exam.class_form,
       stream: schoolClass?.stream ?? null,
     };
   });

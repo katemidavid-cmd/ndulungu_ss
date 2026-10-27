@@ -137,6 +137,62 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
+
+    const { data: sourceAssignments, error: sourceAssignmentsError } =
+      await adminSupabase
+        .from("class_subject_assignments")
+        .select("subject_id, is_compulsory")
+        .eq("form", forms[0]);
+    if (sourceAssignmentsError) {
+      return NextResponse.json(
+        {
+          error: `Subject assignments for the current form could not be loaded: ${sourceAssignmentsError.message}`,
+        },
+        { status: 500 },
+      );
+    }
+
+    const { data: targetAssignments, error: targetAssignmentsError } =
+      await adminSupabase
+        .from("class_subject_assignments")
+        .select("subject_id")
+        .eq("form", targetClass.form);
+    if (targetAssignmentsError) {
+      return NextResponse.json(
+        {
+          error: `Subject assignments for the destination form could not be loaded: ${targetAssignmentsError.message}`,
+        },
+        { status: 500 },
+      );
+    }
+
+    const targetSubjectIds = new Set(
+      (targetAssignments ?? []).map((assignment) => assignment.subject_id),
+    );
+    const missingAssignments = (sourceAssignments ?? [])
+      .filter((assignment) => !targetSubjectIds.has(assignment.subject_id))
+      .map((assignment) => ({
+        form: targetClass.form,
+        subject_id: assignment.subject_id,
+        is_compulsory: assignment.is_compulsory,
+      }));
+
+    if (missingAssignments.length > 0) {
+      const { error: copyError } = await adminSupabase
+        .from("class_subject_assignments")
+        .upsert(missingAssignments, {
+          onConflict: "form,subject_id",
+          ignoreDuplicates: true,
+        });
+      if (copyError) {
+        return NextResponse.json(
+          {
+            error: `Subject assignments could not be carried to the destination form: ${copyError.message}`,
+          },
+          { status: 500 },
+        );
+      }
+    }
   }
 
   const { error: updateError } = await adminSupabase

@@ -45,7 +45,7 @@ type RecentMark = {
   updated_at: string | null;
   exams: { name: string; class_form: string } | null;
   subjects: { name: string } | null;
-  students: { full_name: string; admission_no: string | null } | null;
+  students: { full_name: string } | null;
 };
 
 export default async function TeacherDashboard() {
@@ -67,9 +67,65 @@ export default async function TeacherDashboard() {
     { name: "teaching assignments", error: assignmentsRes.error },
   ]);
 
+  const periodRes = await admin
+    .from("academic_period_settings")
+    .select("academic_year")
+    .eq("id", 1)
+    .maybeSingle();
+  assertDashboardQueries([
+    { name: "academic period", error: periodRes.error },
+  ]);
+  const activeYear = periodRes.data?.academic_year ?? "";
+
   const assignments = (assignmentsRes.data ?? []) as Assignment[];
   const forms = [...new Set(assignments.map((item) => item.class_name))];
   const subjectNames = [...new Set(assignments.map((item) => item.subject_name))];
+
+  const examsQuery = () => {
+    let query = admin
+      .from("exams")
+      .select(
+        "id, name, class_form, term, academic_year, start_date, end_date, status",
+      )
+      .in("class_form", forms)
+      .order("created_at", { ascending: false });
+    if (activeYear) query = query.eq("academic_year", activeYear);
+    return query.limit(6);
+  };
+
+  const marksCountQuery = () => {
+    let query = admin
+      .from("marks")
+      .select("id, exams!inner(academic_year)", {
+        count: "exact",
+        head: true,
+      })
+      .eq("entered_by", user.id);
+    if (activeYear) query = query.eq("exams.academic_year", activeYear);
+    return query;
+  };
+
+  const recentMarksQuery = () => {
+    let query = admin
+      .from("marks")
+      .select(
+        "id, total_score, is_absent, updated_at, exams!inner(name, class_form, academic_year), subjects(name), students(full_name)",
+      )
+      .eq("entered_by", user.id)
+      .order("updated_at", { ascending: false });
+    if (activeYear) query = query.eq("exams.academic_year", activeYear);
+    return query.limit(5);
+  };
+
+  const examCountQuery = (status: string) => {
+    let query = admin
+      .from("exams")
+      .select("id", { count: "exact", head: true })
+      .in("class_form", forms)
+      .eq("status", status);
+    if (activeYear) query = query.eq("academic_year", activeYear);
+    return query;
+  };
 
   const [
     examsRes,
@@ -81,27 +137,10 @@ export default async function TeacherDashboard() {
   ] =
     await Promise.all([
       forms.length
-        ? admin
-            .from("exams")
-            .select(
-              "id, name, class_form, term, academic_year, start_date, end_date, status",
-            )
-            .in("class_form", forms)
-            .order("created_at", { ascending: false })
-            .limit(6)
+        ? examsQuery()
         : Promise.resolve({ data: [] as Exam[], error: null }),
-      admin
-        .from("marks")
-        .select("id", { count: "exact", head: true })
-        .eq("entered_by", user.id),
-      admin
-        .from("marks")
-        .select(
-          "id, total_score, is_absent, updated_at, exams(name, class_form), subjects(name), students(full_name, admission_no)",
-        )
-        .eq("entered_by", user.id)
-        .order("updated_at", { ascending: false })
-        .limit(5),
+      marksCountQuery(),
+      recentMarksQuery(),
       forms.length
         ? admin.from("classes").select("id, form").in("form", forms)
         : Promise.resolve({
@@ -109,18 +148,10 @@ export default async function TeacherDashboard() {
             error: null,
           }),
       forms.length
-        ? admin
-            .from("exams")
-            .select("id", { count: "exact", head: true })
-            .in("class_form", forms)
-            .eq("status", "Active")
+        ? examCountQuery("Active")
         : Promise.resolve({ count: 0, error: null }),
       forms.length
-        ? admin
-            .from("exams")
-            .select("id", { count: "exact", head: true })
-            .in("class_form", forms)
-            .eq("status", "Processed")
+        ? examCountQuery("Processed")
         : Promise.resolve({ count: 0, error: null }),
     ]);
 
@@ -346,9 +377,6 @@ export default async function TeacherDashboard() {
                     <td className="py-3 pr-4">
                       <p className="font-semibold text-slate-900">
                         {mark.students?.full_name ?? "Unknown student"}
-                      </p>
-                      <p className="mt-0.5 text-xs text-slate-500">
-                        {mark.students?.admission_no || "No admission number"}
                       </p>
                     </td>
                     <td className="py-3 pr-4 text-slate-700">

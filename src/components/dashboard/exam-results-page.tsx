@@ -37,10 +37,10 @@ type Result = {
   points: number;
   position: number | null;
   is_incomplete: boolean;
+  gpa?: number | null;
   subject_breakdown: SubjectResult[];
   student: {
     full_name: string;
-    admission_no: string | null;
     sex: "F" | "M";
   } | null;
 };
@@ -83,7 +83,7 @@ type SubjectPerformance = {
   average: number | null;
   grade: string;
   gpa: number | null;
-  competency: string;
+  remarks: string;
   sat: number;
   pass: number;
   grades: Record<string, { F: number; M: number; T: number }>;
@@ -122,13 +122,14 @@ function divisionFor(points: number) {
   return "DIV 0";
 }
 
-function competencyFor(gpa: number | null) {
-  if (gpa === null) return "—";
-  if (gpa < 1.5) return "Excellent";
-  if (gpa < 1.8) return "Very Good";
-  if (gpa < 2.3) return "Good";
-  if (gpa < 3) return "Average";
-  return "Unsatisfactory";
+function remarksForGrade(grade: string) {
+  if (grade === "A") return "Excellent";
+  if (grade === "B") return "Very Good";
+  if (grade === "C") return "Good";
+  if (grade === "D") return "Satisfactory";
+  if (grade === "F") return "Unsatisfactory";
+  if (grade === "ABS") return "Absent";
+  return "—";
 }
 
 function csvCell(value: unknown) {
@@ -193,7 +194,7 @@ export function ExamResultsPage({
     let active = true;
     async function loadExams() {
       try {
-        const response = await fetch("/api/exams?pageSize=100");
+        const response = await fetch("/api/exams?pageSize=100&year=all");
         const body = (await response.json()) as { exams?: Exam[]; error?: string };
         if (!response.ok) throw new Error(body.error || "Unable to load examinations.");
         if (!active) return;
@@ -324,12 +325,17 @@ export function ExamResultsPage({
                 100,
             ) / 100
           : null;
-      const points = sat
+      const satPoints = sat
         .map((subject) => subject.points)
-        .filter((point): point is number => point !== null)
+        .filter((point): point is number => point !== null);
+      const points = [...satPoints]
         .sort((a, b) => a - b)
         .slice(0, 7)
         .reduce((sum, point) => sum + point, 0);
+      const gpa =
+        satPoints.length > 0
+          ? Math.round((satPoints.reduce((sum, point) => sum + point, 0) / satPoints.length) * 100) / 100
+          : null;
       const isIncomplete =
         result.is_incomplete || breakdown.some((subject) => subject.missing);
       return {
@@ -338,6 +344,7 @@ export function ExamResultsPage({
         average,
         grade: average === null ? "—" : gradeFor(average),
         points,
+        gpa,
         division: isIncomplete ? "Incomplete" : divisionFor(points),
         is_incomplete: isIncomplete,
         position: null as number | null,
@@ -398,7 +405,9 @@ export function ExamResultsPage({
       averages.length > 0
         ? Math.round((averages.reduce((sum, value) => sum + value, 0) / averages.length) * 100) / 100
         : null;
-    const gpas = reportRows.map((row) => row.points);
+    const gpas = reportRows
+      .map((row) => row.gpa)
+      .filter((value): value is number => value !== null && value !== undefined);
     const gpa =
       gpas.length > 0
         ? Math.round((gpas.reduce((sum, value) => sum + value, 0) / gpas.length) * 100) / 100
@@ -442,7 +451,7 @@ export function ExamResultsPage({
         average,
         grade,
         gpa,
-        competency: competencyFor(gpa),
+        remarks: remarksForGrade(grade),
         sat: entries.length,
         pass: entries.filter(({ result }) => result.grade !== "F").length,
         grades,
@@ -529,7 +538,7 @@ export function ExamResultsPage({
       ]),
       [],
       ["SUBJECT PERFORMANCE SUMMARY"],
-      ["#", "SUBJECT", ...GRADES.flatMap((grade) => [`${grade} F`, `${grade} M`, `${grade} T`]), "AVG", "GRADE", "REG", "SAT", "PASS", "GPA", "COMPETENCY"],
+      ["#", "SUBJECT", ...GRADES.flatMap((grade) => [`${grade} F`, `${grade} M`, `${grade} T`]), "AVG", "GRADE", "REG", "SAT", "PASS", "GPA", "REMARKS"],
       ...subjectPerformance.map((item, index) => [
         index + 1,
         `${item.subject.subject_code} — ${item.subject.name}`,
@@ -540,7 +549,7 @@ export function ExamResultsPage({
         item.sat,
         item.pass,
         item.gpa ?? "",
-        item.competency,
+        item.remarks,
       ]),
     ];
     const csv = `\uFEFF${header.map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
@@ -807,7 +816,7 @@ export function ExamResultsPage({
                     <th rowSpan={2} className="px-0.5 py-1">SAT</th>
                     <th rowSpan={2} className="px-0.5 py-1">PASS</th>
                     <th rowSpan={2} className="px-0.5 py-1">GPA</th>
-                    <th rowSpan={2} className="px-0.5 py-1">COMPETENCY</th>
+                    <th rowSpan={2} className="px-0.5 py-1">REMARKS</th>
                   </tr>
                   <tr>
                     {GRADES.map((grade) => (
@@ -837,7 +846,7 @@ export function ExamResultsPage({
                       <td className="px-0.5 py-1">{item.sat}</td>
                       <td className="px-0.5 py-1">{item.pass}</td>
                       <td className="px-0.5 py-1">{item.gpa === null ? "—" : item.gpa.toFixed(2)}</td>
-                      <td className="break-words px-0.5 py-1 font-semibold">{item.competency}</td>
+                      <td className="break-words px-0.5 py-1 font-semibold">{item.remarks}</td>
                     </tr>
                   ))}
                   {subjectPerformance.length === 0 && <tr><td colSpan={24} className="px-4 py-6 text-slate-500">No subjects for this examination.</td></tr>}
@@ -852,7 +861,7 @@ export function ExamResultsPage({
                       <span className="mr-1 text-slate-500">{index + 1}.</span>
                       {item.subject.subject_code} — {item.subject.name}
                     </h3>
-                    <span className="shrink-0 text-xs font-bold uppercase text-slate-700 dark:text-slate-300">{item.competency}</span>
+                    <span className="shrink-0 text-xs font-bold uppercase text-slate-700 dark:text-slate-300">{item.remarks}</span>
                   </div>
                   <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs sm:grid-cols-4">
                     <p><span className="text-slate-500">AVG:</span> {item.average === null ? "—" : `${item.average.toFixed(2)}%`}</p>
@@ -881,7 +890,7 @@ export function ExamResultsPage({
               )}
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              COMPETENCY levels are estimates; verify against official school/NECTA guidelines.
+              GPA is the average grade point per subject (A=1, B=2, C=3, D=4, F=5; lower is better). REMARKS follow the subject grade.
             </p>
           </section>
         </>

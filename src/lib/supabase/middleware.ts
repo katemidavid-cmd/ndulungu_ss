@@ -29,9 +29,39 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  type AuthedUser = {
+    id: string;
+    email?: string;
+    app_metadata?: Record<string, unknown>;
+  };
+
+  let user: AuthedUser | null = null;
+
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const claims = claimsData?.claims as Record<string, unknown> | undefined;
+
+  if (typeof claims?.sub === "string") {
+    user = {
+      id: claims.sub,
+      email: typeof claims.email === "string" ? claims.email : undefined,
+      app_metadata:
+        claims.app_metadata && typeof claims.app_metadata === "object"
+          ? (claims.app_metadata as Record<string, unknown>)
+          : {},
+    };
+  } else {
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
+
+    if (authUser) {
+      user = {
+        id: authUser.id,
+        email: authUser.email ?? undefined,
+        app_metadata: authUser.app_metadata as Record<string, unknown>,
+      };
+    }
+  }
 
   const path = request.nextUrl.pathname;
 
@@ -49,13 +79,20 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (user && path.startsWith("/dashboard")) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
+    const metadataRole =
+      typeof user.app_metadata?.role === "string"
+        ? user.app_metadata.role
+        : null;
 
-    const role = profile?.role;
+    let role = metadataRole;
+    if (!role) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single();
+      role = profile?.role ?? null;
+    }
     const sharedAccountPath =
       path === "/dashboard/profile" || path === "/dashboard/change-password";
 

@@ -34,6 +34,46 @@ const statusTones: Record<ExamStatus, string> = {
 export default async function HeadmasterDashboard() {
   const admin = createAdminClient();
 
+  const periodRes = await admin
+    .from("academic_period_settings")
+    .select("academic_year, term")
+    .eq("id", 1)
+    .maybeSingle();
+  assertDashboardQueries([
+    { name: "academic period", error: periodRes.error },
+  ]);
+  const period = periodRes.data ?? null;
+  const activeYear = period?.academic_year ?? "";
+
+  const examCountQuery = (status: ExamStatus) => {
+    let query = admin
+      .from("exams")
+      .select("id", { count: "exact", head: true })
+      .eq("status", status);
+    if (activeYear) query = query.eq("academic_year", activeYear);
+    return query;
+  };
+
+  const recentExamsQuery = () => {
+    let query = admin
+      .from("exams")
+      .select(
+        "id, name, class_form, term, academic_year, start_date, end_date, status",
+      )
+      .order("created_at", { ascending: false });
+    if (activeYear) query = query.eq("academic_year", activeYear);
+    return query.limit(6);
+  };
+
+  const latestProcessedQuery = () => {
+    let query = admin
+      .from("exams")
+      .select("id, name, class_form, term, academic_year, processed_at")
+      .eq("status", "Processed");
+    if (activeYear) query = query.eq("academic_year", activeYear);
+    return query.order("processed_at", { ascending: false }).limit(1).maybeSingle();
+  };
+
   const [
     teachersRes,
     studentsRes,
@@ -44,7 +84,6 @@ export default async function HeadmasterDashboard() {
     processedRes,
     recentExamsRes,
     latestProcessedRes,
-    periodRes,
     auditRes,
   ] = await Promise.all([
     admin
@@ -54,39 +93,11 @@ export default async function HeadmasterDashboard() {
     admin.from("students").select("id", { count: "exact", head: true }),
     admin.from("classes").select("id", { count: "exact", head: true }),
     admin.from("subjects").select("id", { count: "exact", head: true }),
-    admin
-      .from("exams")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "Draft"),
-    admin
-      .from("exams")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "Active"),
-    admin
-      .from("exams")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "Processed"),
-    admin
-      .from("exams")
-      .select(
-        "id, name, class_form, term, academic_year, start_date, end_date, status",
-      )
-      .order("created_at", { ascending: false })
-      .limit(6),
-    admin
-      .from("exams")
-      .select(
-        "id, name, class_form, term, academic_year, processed_at",
-      )
-      .eq("status", "Processed")
-      .order("processed_at", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-    admin
-      .from("academic_period_settings")
-      .select("academic_year, term")
-      .eq("id", 1)
-      .maybeSingle(),
+    examCountQuery("Draft"),
+    examCountQuery("Active"),
+    examCountQuery("Processed"),
+    recentExamsQuery(),
+    latestProcessedQuery(),
     admin
       .from("exam_audit_logs")
       .select("id", { count: "exact", head: true }),
@@ -102,7 +113,6 @@ export default async function HeadmasterDashboard() {
     { name: "processed examinations", error: processedRes.error },
     { name: "recent examinations", error: recentExamsRes.error },
     { name: "latest processed examination", error: latestProcessedRes.error },
-    { name: "academic period", error: periodRes.error },
     { name: "audit log", error: auditRes.error },
   ]);
 
@@ -116,7 +126,6 @@ export default async function HeadmasterDashboard() {
   const totalExams = draftCount + activeCount + processedCount;
   const recentExams = recentExamsRes.data ?? [];
   const latestProcessedExam = latestProcessedRes.data ?? null;
-  const period = periodRes.data ?? null;
 
   const latestResults: Array<{ division: string | null; average: number | null }> = [];
   let latestResultsCount = 0;

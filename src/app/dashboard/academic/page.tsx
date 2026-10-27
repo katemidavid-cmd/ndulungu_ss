@@ -33,6 +33,53 @@ const statusTones: Record<ExamStatus, string> = {
 export default async function AcademicDashboard() {
   const admin = createAdminClient();
 
+  const periodRes = await admin
+    .from("academic_period_settings")
+    .select("academic_year, term")
+    .eq("id", 1)
+    .maybeSingle();
+  assertDashboardQueries([
+    { name: "academic period", error: periodRes.error },
+  ]);
+  const period = periodRes.data ?? null;
+  const activeYear = period?.academic_year ?? "";
+
+  const examCountQuery = (status: ExamStatus) => {
+    let query = admin
+      .from("exams")
+      .select("id", { count: "exact", head: true })
+      .eq("status", status);
+    if (activeYear) query = query.eq("academic_year", activeYear);
+    return query;
+  };
+
+  const recentExamsQuery = () => {
+    let query = admin
+      .from("exams")
+      .select(
+        "id, name, class_form, term, academic_year, start_date, end_date, status",
+      )
+      .order("created_at", { ascending: false });
+    if (activeYear) query = query.eq("academic_year", activeYear);
+    return query.limit(6);
+  };
+
+  const yearScopedMarksQuery = () => {
+    let query = admin
+      .from("marks")
+      .select("id, exams!inner(academic_year)", { count: "exact", head: true });
+    if (activeYear) query = query.eq("exams.academic_year", activeYear);
+    return query;
+  };
+
+  const yearScopedResultsQuery = () => {
+    let query = admin
+      .from("exam_results")
+      .select("id, exams!inner(academic_year)", { count: "exact", head: true });
+    if (activeYear) query = query.eq("exams.academic_year", activeYear);
+    return query;
+  };
+
   const [
     classesRes,
     subjectsRes,
@@ -46,7 +93,6 @@ export default async function AcademicDashboard() {
     resultsRes,
     allocationsRes,
     assignmentsRes,
-    periodRes,
   ] = await Promise.all([
     admin.from("classes").select("id", { count: "exact", head: true }),
     admin.from("subjects").select("id", { count: "exact", head: true }),
@@ -55,38 +101,18 @@ export default async function AcademicDashboard() {
       .select("id", { count: "exact", head: true })
       .eq("role", "teacher"),
     admin.from("students").select("id", { count: "exact", head: true }),
-    admin
-      .from("exams")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "Draft"),
-    admin
-      .from("exams")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "Active"),
-    admin
-      .from("exams")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "Processed"),
-    admin
-      .from("exams")
-      .select(
-        "id, name, class_form, term, academic_year, start_date, end_date, status",
-      )
-      .order("created_at", { ascending: false })
-      .limit(6),
-    admin.from("marks").select("id", { count: "exact", head: true }),
-    admin.from("exam_results").select("id", { count: "exact", head: true }),
+    examCountQuery("Draft"),
+    examCountQuery("Active"),
+    examCountQuery("Processed"),
+    recentExamsQuery(),
+    yearScopedMarksQuery(),
+    yearScopedResultsQuery(),
     admin
       .from("class_subject_assignments")
       .select("id", { count: "exact", head: true }),
     admin
       .from("teaching_assignments")
       .select("id", { count: "exact", head: true }),
-    admin
-      .from("academic_period_settings")
-      .select("academic_year, term")
-      .eq("id", 1)
-      .maybeSingle(),
   ]);
 
   assertDashboardQueries([
@@ -102,7 +128,6 @@ export default async function AcademicDashboard() {
     { name: "exam results", error: resultsRes.error },
     { name: "subject allocations", error: allocationsRes.error },
     { name: "teaching assignments", error: assignmentsRes.error },
-    { name: "academic period", error: periodRes.error },
   ]);
 
   const classCount = requireDashboardCount(classesRes.count, "classes");
@@ -114,7 +139,6 @@ export default async function AcademicDashboard() {
   const processedCount = requireDashboardCount(processedRes.count, "processed examinations");
   const totalExams = draftCount + activeCount + processedCount;
   const recentExams = recentExamsRes.data ?? [];
-  const period = periodRes.data ?? null;
 
   const statusItems: Array<{ label: ExamStatus; count: number }> = [
     { label: "Draft", count: draftCount },

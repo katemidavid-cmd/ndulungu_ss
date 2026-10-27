@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, GraduationCap, LoaderCircle, LockKeyhole, Mail } from "lucide-react";
 import { notify } from "@/lib/notifications";
@@ -19,7 +20,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
@@ -30,14 +31,36 @@ export default function LoginPage() {
         return;
       }
 
+      let role =
+        typeof data.user.app_metadata?.role === "string"
+          ? data.user.app_metadata.role
+          : null;
+
+      if (!role) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", data.user.id)
+          .maybeSingle();
+        role = profile?.role ?? null;
+      }
+
+      const home =
+        role === "headmaster"
+          ? "/dashboard/headmaster"
+          : role === "academic"
+            ? "/dashboard/academic"
+            : role === "teacher"
+              ? "/dashboard/teacher"
+              : "/dashboard";
+
       const requested = new URLSearchParams(window.location.search).get("next");
       const destination =
         requested && requested.startsWith("/") && !requested.startsWith("//")
           ? requested
-          : "/dashboard";
+          : home;
       window.dispatchEvent(new Event("app:navigation-start"));
       router.replace(destination);
-      router.refresh();
     } catch (error) {
       setLoading(false);
       notify(
@@ -95,7 +118,7 @@ export default function LoginPage() {
                   Welcome to Ndulungu RMS
                 </h2>
                 <p className="mt-1.5 text-sm leading-6 text-slate-500">
-                  Sign in with your school email and password to continue.
+                  Sign in with your email and password to continue.
                 </p>
               </div>
 
@@ -119,7 +142,7 @@ export default function LoginPage() {
                       onChange={(event) => setEmail(event.target.value)}
                       required
                       className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-10 pr-4 text-base text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 sm:text-sm"
-                      placeholder="you@school.ac.tz"
+                      placeholder="you@gmail.com"
                     />
                   </div>
                 </div>
@@ -132,6 +155,12 @@ export default function LoginPage() {
                     >
                       Password
                     </label>
+                    <Link
+                      href="/forgot-password"
+                      className="text-xs font-semibold text-blue-700 hover:text-blue-800 hover:underline"
+                    >
+                      Forgot password?
+                    </Link>
                   </div>
                   <div className="relative">
                     <LockKeyhole className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />

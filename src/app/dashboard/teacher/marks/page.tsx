@@ -28,7 +28,6 @@ type Subject = {
 type Student = {
   id: string;
   full_name: string;
-  admission_no: string | null;
 };
 
 type Mark = {
@@ -453,7 +452,7 @@ export default function TeacherMarksPage() {
                 type="search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search student name or admission no."
+                placeholder="Search student name"
                 className="min-h-11 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
               />
             </label>
@@ -478,9 +477,6 @@ export default function TeacherMarksPage() {
                         <h4 className="truncate font-semibold text-slate-900">
                           {student.full_name}
                         </h4>
-                        <p className="truncate text-[11px] text-slate-500 sm:text-xs">
-                          {student.admission_no || "No admission number"}
-                        </p>
                       </div>
 
                       <label className="inline-flex min-h-9 items-center gap-1.5 justify-self-end text-xs font-medium text-slate-600 sm:gap-2 sm:text-sm">

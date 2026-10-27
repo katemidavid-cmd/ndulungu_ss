@@ -27,7 +27,6 @@ type Student = {
   last_name: string;
   full_name: string;
   sex: "M" | "F";
-  admission_no: string | null;
   created_at: string;
 };
 
@@ -36,7 +35,6 @@ type StudentForm = {
   middle_name: string;
   last_name: string;
   sex: "M" | "F";
-  admission_no: string;
 };
 
 type OptionalSubject = {
@@ -52,9 +50,6 @@ type CsvRow = {
   surname?: string;
   sex?: string;
   gender?: string;
-  admission_no?: string;
-  adm_no?: string;
-  admission?: string;
 };
 
 const EMPTY_STUDENT: StudentForm = {
@@ -62,7 +57,6 @@ const EMPTY_STUDENT: StudentForm = {
   middle_name: "",
   last_name: "",
   sex: "M",
-  admission_no: "",
 };
 
 function normalizeSex(value: unknown) {
@@ -84,16 +78,12 @@ function getMiddleName(row: CsvRow) {
   return row.middle_name?.trim() || "";
 }
 
-function getAdmission(row: CsvRow) {
-  return row.admission_no?.trim() || row.adm_no?.trim() || row.admission?.trim() || "";
-}
-
 function getSex(row: CsvRow) {
   return normalizeSex(row.sex ?? row.gender);
 }
 
 function downloadTemplate() {
-  const csv = "first_name,middle_name,last_name,sex,admission_no\nJohn,Paul,Mdoe,M,ADM001\nMary,,Kweka,F,ADM002\n";
+  const csv = "first_name,middle_name,last_name,sex\nJohn,Paul,Mdoe,M\nMary,,Kweka,F\n";
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -326,17 +316,11 @@ export default function StudentsPage() {
       middle_name: studentForm.middle_name.trim() || null,
       last_name: lastName,
       sex: studentForm.sex,
-      admission_no: studentForm.admission_no.trim() || null,
     });
 
     if (insertError) {
       setSaving(false);
-      showToast(
-        "error",
-        insertError.code === "23505"
-          ? "This admission number is already used by another student."
-          : insertError.message
-      );
+      showToast("error", insertError.message);
       return;
     }
 
@@ -380,7 +364,6 @@ export default function StudentsPage() {
             middle_name: string | null;
             last_name: string;
             sex: "M" | "F";
-            admission_no: string | null;
           }> = [];
 
           for (const row of rows) {
@@ -398,7 +381,6 @@ export default function StudentsPage() {
               middle_name: getMiddleName(row) || null,
               last_name: lastName,
               sex,
-              admission_no: getAdmission(row) || null,
             });
           }
 
@@ -417,12 +399,7 @@ export default function StudentsPage() {
 
           if (insertError) {
             setImporting(false);
-            showToast(
-              "error",
-              insertError.code === "23505"
-                ? "Some admission numbers in this CSV already exist."
-                : insertError.message
-            );
+            showToast("error", insertError.message);
             return;
           }
 
@@ -733,19 +710,6 @@ export default function StudentsPage() {
                         <option value="F">Female</option>
                       </select>
                     </div>
-                    <div>
-                      <label htmlFor="admission_no" className="mb-1.5 block text-xs font-semibold text-slate-700">
-                        Admission number (optional)
-                      </label>
-                      <input
-                        id="admission_no"
-                        value={studentForm.admission_no}
-                        onChange={(event) =>
-                          setStudentForm((current) => ({ ...current, admission_no: event.target.value }))
-                        }
-                        className="min-h-11 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
-                      />
-                    </div>
                     <div className="flex items-end">
                       <button
                         type="submit"
@@ -767,7 +731,7 @@ export default function StudentsPage() {
                         <input
                           value={search}
                           onChange={(event) => setSearch(event.target.value)}
-                          placeholder="Search by name or admission number"
+                          placeholder="Search by name"
                           className="min-h-11 w-full rounded-xl border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
                         />
                       </div>
@@ -853,7 +817,6 @@ export default function StudentsPage() {
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">#</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Full name</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Gender</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Admission No.</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Optional status</th>
                         <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Actions</th>
                       </tr>
@@ -880,7 +843,6 @@ export default function StudentsPage() {
                             <td className="px-4 py-3 text-sm text-gray-500">{(page - 1) * pageSize + index + 1}</td>
                             <td className="px-4 py-3 text-sm font-medium text-gray-900">{student.full_name}</td>
                             <td className="px-4 py-3 text-sm text-gray-700">{student.sex === "M" ? "Male" : "Female"}</td>
-                            <td className="px-4 py-3 text-sm text-gray-700">{student.admission_no || "-"}</td>
                             <td className="px-4 py-3 text-sm">
                               {selectedOptionalSubjectId ? (
                                 isEnrolled ? (
@@ -911,7 +873,7 @@ export default function StudentsPage() {
                       })}
                       {!filteredStudents.length && (
                         <tr>
-                          <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-600">
+                          <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-600">
                             {classTotal ? "No students match your search." : "No students yet in this stream."}
                           </td>
                         </tr>
@@ -948,9 +910,6 @@ export default function StudentsPage() {
                                   <h4 className="break-words text-sm font-bold text-slate-950">
                                     {student.full_name}
                                   </h4>
-                                  <p className="mt-1 text-xs text-slate-500">
-                                    {student.admission_no || "No admission number"}
-                                  </p>
                                 </div>
                                 <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
                                   {student.sex === "M" ? "Male" : "Female"}

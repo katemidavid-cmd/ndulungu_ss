@@ -123,6 +123,12 @@ export function AcademicPeriodSettings() {
         </div>
       </div>
 
+      <p className="border-b border-slate-200 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-800 sm:px-6">
+        Examinations and results remain grouped under the academic year they
+        were created in. Changing the active year starts a fresh examination
+        workspace; previous years stay available through the year filter.
+      </p>
+
       <form onSubmit={(event) => void savePeriod(event)}>
         <div className="grid gap-4 p-4 sm:grid-cols-2 sm:gap-5 sm:p-6">
           <label className="space-y-1.5 text-sm font-semibold text-slate-700">

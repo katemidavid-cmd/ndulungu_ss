@@ -138,6 +138,14 @@ export async function PUT(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  const { error: metadataError } = await adminSupabase.auth.admin.updateUserById(
+    id,
+    { app_metadata: { role } },
+  );
+  if (metadataError) {
+    return NextResponse.json({ error: metadataError.message }, { status: 500 });
+  }
+
   return NextResponse.json({ success: true });
 }
 

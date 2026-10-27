@@ -37,7 +37,6 @@ type Student = {
   last_name: string;
   full_name: string;
   sex: Sex;
-  admission_no: string | null;
   created_at: string;
 };
 
@@ -52,7 +51,6 @@ type EditForm = {
   middle_name: string;
   last_name: string;
   sex: Sex;
-  admission_no: string;
 };
 
 const FORMS: FormLevel[] = ["Form I", "Form II", "Form III", "Form IV"];
@@ -61,7 +59,6 @@ const EMPTY_EDIT_FORM: EditForm = {
   middle_name: "",
   last_name: "",
   sex: "M",
-  admission_no: "",
 };
 
 function classLabel(schoolClass: SchoolClass) {
@@ -439,7 +436,6 @@ export function RegisteredStudentsManager({
       middle_name: student.middle_name ?? "",
       last_name: student.last_name,
       sex: student.sex,
-      admission_no: student.admission_no ?? "",
     });
   }
 
@@ -463,7 +459,6 @@ export function RegisteredStudentsManager({
           middle_name: editForm.middle_name.trim() || null,
           last_name: lastName,
           sex: editForm.sex,
-          admission_no: editForm.admission_no.trim() || null,
         })
         .eq("id", studentToEdit.id);
 
@@ -731,7 +726,7 @@ export function RegisteredStudentsManager({
                 type="search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search by name or admission number"
+                placeholder="Search by name"
                 className="min-h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
               />
             </label>
@@ -885,7 +880,6 @@ export function RegisteredStudentsManager({
                       />
                     </th>
                     <th className="px-5 py-3 font-semibold">Student</th>
-                    <th className="px-5 py-3 font-semibold">Admission no.</th>
                     <th className="px-5 py-3 font-semibold">Class</th>
                     <th className="px-5 py-3 font-semibold">Gender</th>
                     <th className="px-5 py-3 text-right font-semibold">Actions</th>
@@ -910,9 +904,6 @@ export function RegisteredStudentsManager({
                         <div className="font-semibold text-slate-900">
                           {student.full_name}
                         </div>
-                      </td>
-                      <td className="px-5 py-4 text-sm text-slate-600">
-                        {student.admission_no || "—"}
                       </td>
                       <td className="px-5 py-4">
                         <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
@@ -963,9 +954,6 @@ export function RegisteredStudentsManager({
                         <h3 className="break-words font-semibold text-slate-900">
                           {student.full_name}
                         </h3>
-                        <p className="mt-1 text-sm text-slate-500">
-                          {student.admission_no || "No admission number"}
-                        </p>
                       </div>
                       <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
                         {schoolClass ? classLabel(schoolClass) : "Class unavailable"}
@@ -1043,18 +1031,6 @@ export function RegisteredStudentsManager({
                   <option value="F">Female</option>
                 </select>
               </label>
-              <div className="sm:col-span-2">
-                <TextField
-                  label="Admission number"
-                  value={editForm.admission_no}
-                  onChange={(value) =>
-                    setEditForm((current) => ({
-                      ...current,
-                      admission_no: value,
-                    }))
-                  }
-                />
-              </div>
             </div>
             <ModalActions
               onCancel={() => setStudentToEdit(null)}
@@ -1152,7 +1128,11 @@ export function RegisteredStudentsManager({
               </select>
             </label>
             <p className="text-xs leading-5 text-slate-500">
-              Compulsory subjects will be updated for the destination form.
+              The current form&apos;s subject assignments are added to the
+              destination form, and existing destination assignments are kept.
+              Compulsory subjects will be updated automatically. Examination
+              results stay recorded under the form and academic year of the
+              original examination.
             </p>
             <ModalActions
               onCancel={() => setStudentToPromote(null)}
@@ -1261,9 +1241,12 @@ export function RegisteredStudentsManager({
               </select>
             </label>
             <p className="text-xs leading-5 text-slate-500">
-              All selected students will move to this class. Compulsory
-              subjects will update automatically, and optional subjects not
-              offered in the next form will be removed.
+              All selected students will move to this class. The current
+              form&apos;s subject assignments are added to the destination
+              form, and existing destination assignments are kept. Compulsory
+              subjects update automatically, and optional subjects not offered
+              in the next form are removed. Examination results remain recorded
+              under the original form and academic year.
             </p>
             <ModalActions
               onCancel={() => setBulkDialog(null)}

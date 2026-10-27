@@ -81,7 +81,7 @@ export async function GET(request: Request) {
   let studentsQuery = admin
     .from("students")
     .select(
-      "id, class_id, first_name, middle_name, last_name, full_name, sex, admission_no, created_at",
+      "id, class_id, first_name, middle_name, last_name, full_name, sex, created_at",
       { count: "exact" },
     );
 
@@ -91,9 +91,7 @@ export async function GET(request: Request) {
     studentsQuery = studentsQuery.in("class_id", formClassIds);
   }
   if (search) {
-    studentsQuery = studentsQuery.or(
-      `full_name.ilike.%${search}%,admission_no.ilike.%${search}%`,
-    );
+    studentsQuery = studentsQuery.ilike("full_name", `%${search}%`);
   }
 
   const { data: students, count, error: studentsError } = await studentsQuery

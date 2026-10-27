@@ -11,7 +11,7 @@ if (-not $project) {
 }
 
 $sql = Get-Content -Raw -Path $SqlFile
-$body = @{ query = $sql } | ConvertTo-Json -Compress -Depth 3
+$body = ConvertTo-Json -InputObject @{ query = $sql } -Compress -Depth 3
 $uri = "https://api.supabase.com/v1/projects/$project/database/query"
 $headers = @{ "Authorization" = "Bearer $token"; "Content-Type" = "application/json" }
 try {
