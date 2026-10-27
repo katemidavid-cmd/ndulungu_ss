@@ -40,24 +40,6 @@ export async function GET(_request: Request, { params }: RouteContext) {
     return NextResponse.json({ error: "Examination not found." }, { status: 404 });
   }
 
-  if (role === "teacher") {
-    const { data: assignments, error: assignmentsError } = await admin
-      .from("teaching_assignments")
-      .select("id")
-      .eq("teacher_id", user.id)
-      .eq("class_name", exam.class_form)
-      .limit(1);
-    if (assignmentsError) {
-      return NextResponse.json(
-        { error: assignmentsError.message },
-        { status: 500 },
-      );
-    }
-    if (!assignments?.length) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-  }
-
   if (exam.status !== "Processed") {
     return NextResponse.json(
       { error: "Results are available after the examination has been processed." },

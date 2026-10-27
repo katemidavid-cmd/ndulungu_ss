@@ -361,7 +361,7 @@ export function ExamManagementPage({
             <p className="mt-2 max-w-xl text-sm leading-6 text-blue-100/90 sm:text-base">
               {canManageExams
                 ? "Create examinations and keep track of drafts, active exams, and processed results."
-                : "View active examinations assigned to your classes, including upcoming exams."}
+                : "View active examinations across all classes and forms, including upcoming exams."}
             </p>
           </div>
           {canManageExams && (
@@ -469,7 +469,7 @@ export function ExamManagementPage({
             <p className="mt-1 max-w-md text-sm leading-6 text-slate-500">
               {canManageExams
                 ? "Create an examination to start organizing assessment periods."
-                : "Active examinations assigned to your classes will appear here, even if their dates have not started."}
+                : "Active examinations across all classes and forms will appear here, even if their dates have not started."}
             </p>
             {canManageExams && overallTotal === 0 && (
               <button

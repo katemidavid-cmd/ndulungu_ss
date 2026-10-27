@@ -47,15 +47,8 @@ async function getTeacherContext() {
   }
 
   const admin = createAdminClient();
-  const { data: assignments, error: assignmentsError } = await admin
-    .from("teaching_assignments")
-    .select("class_name, subject_name")
-    .eq("teacher_id", user.id);
-  if (assignmentsError) {
-    return { error: assignmentsError.message, status: 500 as const };
-  }
 
-  return { user, assignments: assignments ?? [], admin };
+  return { user, admin };
 }
 
 async function getEligibleStudents(
@@ -110,14 +103,11 @@ export async function GET(request: Request) {
       { status: context.status },
     );
   }
-  const { assignments, admin } = context;
-  const classForms = [...new Set(assignments.map((assignment) => assignment.class_name))];
+  const { admin } = context;
   const { searchParams } = new URL(request.url);
   const examId = searchParams.get("examId");
 
   if (!examId) {
-    if (classForms.length === 0) return NextResponse.json({ exams: [] });
-
     const { data: activePeriod, error: periodError } = await admin
       .from("academic_period_settings")
       .select("academic_year")
@@ -130,7 +120,6 @@ export async function GET(request: Request) {
     let examsQuery = admin
       .from("exams")
       .select("id, name, class_form, term, academic_year, start_date, end_date, has_practical, status")
-      .in("class_form", classForms)
       .eq("status", "Active");
     if (activePeriod?.academic_year) {
       examsQuery = examsQuery.eq("academic_year", activePeriod.academic_year);
@@ -148,18 +137,13 @@ export async function GET(request: Request) {
     .eq("id", examId)
     .maybeSingle();
   if (examError) return NextResponse.json({ error: examError.message }, { status: 500 });
-  if (!exam || exam.status !== "Active" || !classForms.includes(exam.class_form)) {
+  if (!exam || exam.status !== "Active") {
     return NextResponse.json(
-      { error: "This examination is not available for your assigned classes." },
+      { error: "This examination is not available for mark entry." },
       { status: 404 },
     );
   }
 
-  const teacherSubjectNames = new Set(
-    assignments
-      .filter((assignment) => assignment.class_name === exam.class_form)
-      .map((assignment) => assignment.subject_name),
-  );
   const { data: examSubjects, error: examSubjectsError } = await admin
     .from("exam_subjects")
     .select("subject_id")
@@ -180,11 +164,9 @@ export async function GET(request: Request) {
   if (subjectsError) {
     return NextResponse.json({ error: subjectsError.message }, { status: 500 });
   }
-  const subjects = (subjectRows ?? []).filter((subject) =>
-    teacherSubjectNames.has(subject.name),
-  );
+  const subjects = subjectRows ?? [];
   if (subjects.length === 0) {
-    return NextResponse.json({ error: "You have no assigned subjects in this examination." }, { status: 403 });
+    return NextResponse.json({ error: "No subjects are attached to this examination." }, { status: 409 });
   }
 
   const subjectId = searchParams.get("subjectId");
@@ -192,7 +174,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ exam, subjects });
   }
   if (!subjects.some((subject) => subject.id === subjectId)) {
-    return NextResponse.json({ error: "This subject is not assigned to you for this examination." }, { status: 403 });
+    return NextResponse.json({ error: "This subject is not included in this examination." }, { status: 403 });
   }
 
   const page = Math.max(
@@ -389,7 +371,7 @@ export async function POST(request: Request) {
       { status: context.status },
     );
   }
-  const { user, assignments, admin } = context;
+  const { user, admin } = context;
 
   let body: MarkInput;
   try {
@@ -458,12 +440,8 @@ export async function POST(request: Request) {
     .eq("id", subjectId)
     .maybeSingle();
   if (subjectError) return NextResponse.json({ error: subjectError.message }, { status: 500 });
-  if (!subject || !assignments.some(
-    (assignment) =>
-      assignment.class_name === exam.class_form &&
-      assignment.subject_name === subject.name,
-  )) {
-    return NextResponse.json({ error: "You are not assigned to teach this subject in this class." }, { status: 403 });
+  if (!subject) {
+    return NextResponse.json({ error: "This subject is not included in the examination." }, { status: 400 });
   }
   const subjectHasPractical = exam.has_practical && subject.has_practical;
 

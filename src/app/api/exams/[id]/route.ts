@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -25,30 +26,11 @@ export async function GET(_request: Request, { params }: RouteContext) {
   }
 
   const { id } = await params;
-  let query = supabase.from("exams").select("*").eq("id", id);
+  const admin = createAdminClient();
+  let query = admin.from("exams").select("*").eq("id", id);
 
   if (profile.role === "teacher") {
-    const { data: assignments, error: assignmentsError } = await supabase
-      .from("teaching_assignments")
-      .select("class_name")
-      .eq("teacher_id", user.id);
-    if (assignmentsError) {
-      return NextResponse.json(
-        { error: assignmentsError.message },
-        { status: 500 },
-      );
-    }
-
-    const classForms = [
-      ...new Set((assignments ?? []).map((assignment) => assignment.class_name)),
-    ];
-    if (classForms.length === 0) {
-      return NextResponse.json(
-        { error: "Examination not found." },
-        { status: 404 },
-      );
-    }
-    query = query.in("class_form", classForms).in("status", ["Active", "Processed"]);
+    query = query.in("status", ["Active", "Processed"]);
   }
 
   const { data: exam, error } = await query.maybeSingle();

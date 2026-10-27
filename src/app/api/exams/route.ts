@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function GET(request: Request) {
   const supabase = await createClient();
@@ -9,6 +10,7 @@ export async function GET(request: Request) {
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
   if (!profile) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
+  const admin = createAdminClient();
   const { searchParams } = new URL(request.url);
   const page = Math.max(1, Number.parseInt(searchParams.get("page") ?? "", 10) || 1);
   const pageSize = Math.min(
@@ -24,7 +26,7 @@ export async function GET(request: Request) {
   const requestedYear = (searchParams.get("year") ?? "").trim();
   const from = (page - 1) * pageSize;
 
-  const { data: activePeriod, error: periodError } = await supabase
+  const { data: activePeriod, error: periodError } = await admin
     .from("academic_period_settings")
     .select("academic_year")
     .eq("id", 1)
@@ -36,39 +38,11 @@ export async function GET(request: Request) {
   const yearFilter =
     requestedYear === "all" ? "" : requestedYear || activeYear;
 
-  let classForms: string[] = [];
-  if (profile.role === 'teacher') {
-    const { data: assignments, error: assignmentsError } = await supabase
-      .from('teaching_assignments')
-      .select('class_name, subject_name')
-      .eq('teacher_id', user.id);
-    if (assignmentsError) {
-      return NextResponse.json({ error: assignmentsError.message }, { status: 500 });
-    }
-
-    classForms = [...new Set(assignments?.map(a => a.class_name) || [])];
-    if (classForms.length === 0) {
-      return NextResponse.json({
-        exams: [],
-        total: 0,
-        overallTotal: 0,
-        statusCounts: { Draft: 0, Active: 0, Processed: 0 },
-        availableYears: activeYear ? [activeYear] : [],
-        activeYear,
-        year: yearFilter || "all",
-        page: 1,
-        pageSize,
-        totalPages: 1,
-      });
-    }
-  }
-
   const buildQuery = (head = false) => {
     let query = head
-      ? supabase.from('exams').select('id', { count: "exact", head: true })
-      : supabase.from('exams').select('*', { count: "exact" });
+      ? admin.from('exams').select('id', { count: "exact", head: true })
+      : admin.from('exams').select('*', { count: "exact" });
     if (profile.role === 'teacher') {
-      query = query.in('class_form', classForms);
       if (status === 'Active' || status === 'Processed') {
         query = query.eq('status', status);
       } else {
@@ -88,27 +62,21 @@ export async function GET(request: Request) {
   };
 
   const buildOverallQuery = () => {
-    let query = supabase
+    let query = admin
       .from("exams")
       .select("id", { count: "exact", head: true });
     if (profile.role === "teacher") {
-      query = query
-        .in("class_form", classForms)
-        .in("status", ["Active", "Processed"]);
+      query = query.in("status", ["Active", "Processed"]);
     }
     if (yearFilter) query = query.eq("academic_year", yearFilter);
     return query;
   };
 
   const buildYearsQuery = () => {
-    let query = supabase
+    return admin
       .from("exams")
       .select("academic_year")
       .order("academic_year", { ascending: false });
-    if (profile.role === "teacher") {
-      query = query.in("class_form", classForms);
-    }
-    return query;
   };
 
   const [
@@ -147,13 +115,10 @@ export async function GET(request: Request) {
     profile.role === "teacher" ? ["Active", "Processed"] : Object.keys(statusCounts);
   await Promise.all(
     statusesToCount.map(async (examStatus) => {
-      let query = supabase
+      let query = admin
         .from("exams")
         .select("id", { count: "exact", head: true })
         .eq("status", examStatus);
-      if (profile.role === "teacher") {
-        query = query.in("class_form", classForms);
-      }
       if (yearFilter) query = query.eq("academic_year", yearFilter);
       if (form) query = query.eq("class_form", form);
       if (search) {
