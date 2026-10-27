@@ -560,6 +560,15 @@ export function ExamManagementPage({
                         Process
                       </button>
                     )}
+                    {canManageExams && exam.status === "Active" && (
+                      <Link
+                        href={`${dashboardBase}/marks?examId=${encodeURIComponent(exam.id)}`}
+                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800"
+                      >
+                        <FileText className="h-4 w-4" />
+                        Enter Marks
+                      </Link>
+                    )}
                     {canManageExams && exam.status === "Processed" && (
                       <button
                         type="button"

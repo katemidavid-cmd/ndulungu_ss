@@ -27,7 +27,7 @@ function isScore(value: unknown, max: number): value is number {
   );
 }
 
-async function getTeacherContext() {
+async function getMarksContext() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -42,13 +42,13 @@ async function getTeacherContext() {
   if (profileError) {
     return { error: profileError.message, status: 500 as const };
   }
-  if (profile?.role !== "teacher") {
-    return { error: "Only teachers can manage marks here." as const, status: 403 as const };
+  if (profile?.role !== "teacher" && profile?.role !== "academic") {
+    return { error: "Only teachers and academic staff can manage marks here." as const, status: 403 as const };
   }
 
   const admin = createAdminClient();
 
-  return { user, admin };
+  return { user, role: profile.role, admin };
 }
 
 async function getEligibleStudents(
@@ -99,18 +99,38 @@ async function getEligibleStudents(
 }
 
 export async function GET(request: Request) {
-  const context = await getTeacherContext();
+  const context = await getMarksContext();
   if ("error" in context) {
     return NextResponse.json(
       { error: context.error },
       { status: context.status },
     );
   }
-  const { admin } = context;
+  const { user, role, admin } = context;
   const { searchParams } = new URL(request.url);
   const examId = searchParams.get("examId");
 
   if (!examId) {
+    let assignedForms: Set<string> | null = null;
+    if (role === "teacher") {
+      const { data: assignments, error: assignmentsError } = await admin
+        .from("teaching_assignments")
+        .select("class_name")
+        .eq("teacher_id", user.id);
+      if (assignmentsError) {
+        return NextResponse.json(
+          { error: assignmentsError.message },
+          { status: 500 },
+        );
+      }
+      assignedForms = new Set(
+        (assignments ?? []).map((assignment) => assignment.class_name),
+      );
+      if (assignedForms.size === 0) {
+        return NextResponse.json({ exams: [] });
+      }
+    }
+
     const { data: activePeriod, error: periodError } = await admin
       .from("academic_period_settings")
       .select("academic_year")
@@ -131,7 +151,12 @@ export async function GET(request: Request) {
       ascending: false,
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ exams: exams ?? [] });
+    return NextResponse.json({
+      exams:
+        role === "teacher"
+          ? (exams ?? []).filter((item) => assignedForms?.has(item.class_form))
+          : exams ?? [],
+    });
   }
 
   const { data: exam, error: examError } = await admin
@@ -147,6 +172,23 @@ export async function GET(request: Request) {
     );
   }
 
+  let assignedSubjects: Set<string> | null = null;
+  if (role === "teacher") {
+    const { data: assignments, error: assignmentsError } = await admin
+      .from("teaching_assignments")
+      .select("subject_name")
+      .eq("teacher_id", user.id)
+      .eq("class_name", exam.class_form);
+    if (assignmentsError) {
+      return NextResponse.json(
+        { error: assignmentsError.message },
+        { status: 500 },
+      );
+    }
+    assignedSubjects = new Set(
+      (assignments ?? []).map((assignment) => assignment.subject_name.trim().toLowerCase()),
+    );
+  }
   const { data: examSubjects, error: examSubjectsError } = await admin
     .from("exam_subjects")
     .select("subject_id")
@@ -167,9 +209,14 @@ export async function GET(request: Request) {
   if (subjectsError) {
     return NextResponse.json({ error: subjectsError.message }, { status: 500 });
   }
-  const subjects = subjectRows ?? [];
+  const subjects =
+    role === "teacher"
+      ? (subjectRows ?? []).filter((subject) =>
+          assignedSubjects?.has(subject.name.trim().toLowerCase()),
+        )
+      : subjectRows ?? [];
   if (subjects.length === 0) {
-    return NextResponse.json({ error: "No subjects are attached to this examination." }, { status: 409 });
+    return NextResponse.json({ exam, subjects: [] });
   }
 
   const subjectId = searchParams.get("subjectId");
@@ -371,14 +418,14 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const context = await getTeacherContext();
+  const context = await getMarksContext();
   if ("error" in context) {
     return NextResponse.json(
       { error: context.error },
       { status: context.status },
     );
   }
-  const { user, admin } = context;
+  const { user, role, admin } = context;
 
   let body: MarkInput;
   try {
@@ -428,6 +475,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "This examination is not active." }, { status: 403 });
   }
 
+  let assignedSubjects: Set<string> | null = null;
+  if (role === "teacher") {
+    const { data: assignments, error: assignmentsError } = await admin
+      .from("teaching_assignments")
+      .select("subject_name")
+      .eq("teacher_id", user.id)
+      .eq("class_name", exam.class_form);
+    if (assignmentsError) {
+      return NextResponse.json(
+        { error: assignmentsError.message },
+        { status: 500 },
+      );
+    }
+    assignedSubjects = new Set(
+      (assignments ?? []).map((assignment) => assignment.subject_name.trim().toLowerCase()),
+    );
+  }
   const { data: examSubject, error: examSubjectError } = await admin
     .from("exam_subjects")
     .select("subject_id")
@@ -449,6 +513,15 @@ export async function POST(request: Request) {
   if (subjectError) return NextResponse.json({ error: subjectError.message }, { status: 500 });
   if (!subject) {
     return NextResponse.json({ error: "This subject is not included in the examination." }, { status: 400 });
+  }
+  if (
+    role === "teacher" &&
+    !assignedSubjects?.has(subject.name.trim().toLowerCase())
+  ) {
+    return NextResponse.json(
+      { error: "You are not assigned to teach this subject in this class." },
+      { status: 403 },
+    );
   }
   const subjectHasPractical = exam.has_practical && subject.has_practical;
 

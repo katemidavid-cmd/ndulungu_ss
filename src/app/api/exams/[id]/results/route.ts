@@ -22,7 +22,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
     return NextResponse.json({ error: profileError.message }, { status: 500 });
   }
   const role = profile?.role;
-  if (role !== "headmaster" && role !== "academic" && role !== "teacher") {
+  if (role !== "headmaster" && role !== "academic") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

@@ -11,7 +11,6 @@ import {
   GraduationCap,
   FileText,
   ClipboardList,
-  Eye,
   Settings,
   X,
   ChevronDown,
@@ -113,11 +112,6 @@ const navByRole: Record<string, RoleNavigation> = {
         items: [
           { label: "My Classes", href: "/dashboard/teacher/classes", icon: BookOpen },
           { label: "My Exams", href: "/dashboard/teacher/exams", icon: ClipboardList },
-          {
-            label: "View Results",
-            href: "/dashboard/teacher/exams?status=Processed",
-            icon: Eye,
-          },
         ],
       },
     ],
