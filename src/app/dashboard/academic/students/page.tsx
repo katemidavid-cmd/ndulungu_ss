@@ -50,6 +50,10 @@ type CsvRow = {
   surname?: string;
   sex?: string;
   gender?: string;
+  class?: string;
+  class_name?: string;
+  form?: string;
+  stream?: string;
 };
 
 const EMPTY_STUDENT: StudentForm = {
@@ -82,8 +86,63 @@ function getSex(row: CsvRow) {
   return normalizeSex(row.sex ?? row.gender);
 }
 
+const ROMAN_TO_NUMBER: Record<string, string> = {
+  i: "1",
+  ii: "2",
+  iii: "3",
+  iv: "4",
+};
+
+function normalizeClassKey(value: unknown) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/\bform\b/g, "")
+    .replace(/\b(iv|iii|ii|i)\b/g, (match) => ROMAN_TO_NUMBER[match] ?? match)
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function buildClassLookup(classes: SchoolClass[]) {
+  const lookup = new Map<string, string>();
+
+  for (const item of classes) {
+    const roman = item.form.replace(/^Form\s+/i, "");
+    const number = String(FORM_LEVELS.indexOf(item.form) + 1);
+    const stream = item.stream;
+
+    for (const alias of [
+      `${item.form} ${stream}`,
+      `${item.form}${stream}`,
+      `${item.form} - ${stream}`,
+      `${roman} ${stream}`,
+      `${roman}${stream}`,
+      `${roman} - ${stream}`,
+      `${number} ${stream}`,
+      `${number}${stream}`,
+      `${number} - ${stream}`,
+    ]) {
+      lookup.set(normalizeClassKey(alias), item.id);
+    }
+  }
+
+  return lookup;
+}
+
+function getClassId(row: CsvRow, lookup: Map<string, string>) {
+  const directClass = row.class ?? row.class_name;
+  if (directClass?.trim()) {
+    return lookup.get(normalizeClassKey(directClass)) ?? null;
+  }
+
+  if (row.form?.trim() && row.stream?.trim()) {
+    return lookup.get(normalizeClassKey(`${row.form} ${row.stream}`)) ?? null;
+  }
+
+  return null;
+}
+
 function downloadTemplate() {
-  const csv = "first_name,middle_name,last_name,sex\nJohn,Paul,Mdoe,M\nMary,,Kweka,F\n";
+  const csv =
+    "first_name,middle_name,last_name,sex,class\nJohn,Paul,Mdoe,M,Form I A\nMary,,Kweka,F,Form I A\n";
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -365,18 +424,27 @@ export default function StudentsPage() {
             last_name: string;
             sex: "M" | "F";
           }> = [];
+          const classLookup = buildClassLookup(classes);
+          let skipped = 0;
 
           for (const row of rows) {
             const firstName = getFirstName(row);
             const lastName = getLastName(row);
             const sex = getSex(row);
+            const hasClassValue = Boolean(
+              (row.class ?? row.class_name)?.trim() ||
+                (row.form?.trim() && row.stream?.trim()),
+            );
+            const csvClassId = getClassId(row, classLookup);
+            const classId = csvClassId ?? (hasClassValue ? null : effectiveClassId);
 
-            if (!firstName || !lastName || !sex) {
+            if (!firstName || !lastName || !sex || !classId) {
+              skipped += 1;
               continue;
             }
 
             payload.push({
-              class_id: effectiveClassId,
+              class_id: classId,
               first_name: firstName,
               middle_name: getMiddleName(row) || null,
               last_name: lastName,
@@ -388,7 +456,7 @@ export default function StudentsPage() {
             setImporting(false);
             showToast(
               "error",
-              "No valid rows found. Required columns: first_name/first name, last_name/surname, sex/gender (M/F)."
+              "No valid rows found. Required columns: first_name/first name, last_name/surname, sex/gender (M/F), and class (or select a stream).",
             );
             return;
           }
@@ -403,7 +471,14 @@ export default function StudentsPage() {
             return;
           }
 
-          showToast("success", `${payload.length} student(s) imported successfully.`);
+          showToast(
+            "success",
+            `${payload.length} student(s) imported successfully.${
+              skipped
+                ? ` ${skipped} row(s) skipped because required data or class was missing.`
+                : ""
+            }`,
+          );
           refreshStudents();
           setImporting(false);
         },

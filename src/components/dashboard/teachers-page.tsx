@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import {
   BookOpen,
   Edit,
+  Eye,
+  EyeOff,
   Mail,
   Phone,
   Plus,
@@ -50,6 +52,8 @@ interface TeachersPageProps {
 
 const inputClassName =
   "min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10";
+const passwordInputClassName =
+  "min-h-11 w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-3.5 pr-12 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10";
 const secondaryButtonClassName =
   "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50";
 
@@ -68,6 +72,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
   const [overallTotal, setOverallTotal] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
   const [showTeacherModal, setShowTeacherModal] = useState(false);
+  const [showFormPassword, setShowFormPassword] = useState(false);
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
   const [editing, setEditing] = useState<Teacher | null>(null);
   const [assigningTeacher, setAssigningTeacher] = useState<Teacher | null>(null);
@@ -219,6 +224,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
       phone: "",
       role: "teacher",
     });
+    setShowFormPassword(false);
     setShowTeacherModal(true);
   };
 
@@ -234,6 +240,7 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
       phone: teacher.phone || "",
       role: teacher.role,
     });
+    setShowFormPassword(false);
     setShowTeacherModal(true);
   };
 
@@ -838,15 +845,33 @@ export default function TeachersPage({ canManageTeachers }: TeachersPageProps) {
                   <label className="mb-1 block text-sm font-medium text-gray-700">
                     Password *
                   </label>
-                  <input
-                    type="password"
-                    required
-                    value={form.password}
-                    onChange={(event) =>
-                      setForm({ ...form, password: event.target.value })
-                    }
-                    className={inputClassName}
-                  />
+                  <div className="relative">
+                    <input
+                      type={showFormPassword ? "text" : "password"}
+                      required
+                      autoComplete="new-password"
+                      value={form.password}
+                      onChange={(event) =>
+                        setForm({ ...form, password: event.target.value })
+                      }
+                      className={passwordInputClassName}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowFormPassword((visible) => !visible)}
+                      aria-label={
+                        showFormPassword ? "Hide password" : "Show password"
+                      }
+                      aria-pressed={showFormPassword}
+                      className="absolute right-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {showFormPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
