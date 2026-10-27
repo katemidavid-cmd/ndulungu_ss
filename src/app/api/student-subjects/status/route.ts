@@ -24,10 +24,13 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const classId = searchParams.get("classId");
-  const subjectId = searchParams.get("subjectId");
+  const subjectIds = [...new Set(searchParams.getAll("subjectId").filter(Boolean))];
 
-  if (!classId || !subjectId) {
-    return NextResponse.json({ error: "classId and subjectId are required" }, { status: 400 });
+  if (!classId || subjectIds.length === 0 || subjectIds.length > 100) {
+    return NextResponse.json(
+      { error: "classId and between 1 and 100 subject IDs are required" },
+      { status: 400 },
+    );
   }
 
   const adminSupabase = createAdminClient();
@@ -43,13 +46,13 @@ export async function GET(req: Request) {
 
   const studentIds = (students || []).map((s) => s.id);
   if (studentIds.length === 0) {
-    return NextResponse.json({ enrolledStudentIds: [] });
+    return NextResponse.json({ enrolledStudentIds: [], enrollments: [] });
   }
 
   const { data: enrollments, error: enrollmentsError } = await adminSupabase
     .from("student_subjects")
-    .select("student_id")
-    .eq("subject_id", subjectId)
+    .select("student_id, subject_id")
+    .in("subject_id", subjectIds)
     .in("student_id", studentIds)
     .eq("enrollment_type", "optional");
 
@@ -58,6 +61,12 @@ export async function GET(req: Request) {
   }
 
   return NextResponse.json({
-    enrolledStudentIds: (enrollments || []).map((e) => e.student_id),
+    enrolledStudentIds: (enrollments || [])
+      .filter((enrollment) => enrollment.subject_id === subjectIds[0])
+      .map((enrollment) => enrollment.student_id),
+    enrollments: (enrollments || []).map((enrollment) => ({
+      studentId: enrollment.student_id,
+      subjectId: enrollment.subject_id,
+    })),
   });
 }

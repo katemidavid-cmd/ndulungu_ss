@@ -94,6 +94,7 @@ export async function POST(req: Request) {
   let body: {
     studentIds?: unknown;
     subjectId?: unknown;
+    subjectIds?: unknown;
     action?: unknown;
   };
   try {
@@ -107,22 +108,39 @@ export async function POST(req: Request) {
     (studentId): studentId is string =>
       typeof studentId === "string" && studentId.length > 0,
   );
-  const subjectId = typeof body.subjectId === "string" ? body.subjectId : "";
+  const rawSubjectIds = Array.isArray(body.subjectIds)
+    ? body.subjectIds
+    : typeof body.subjectId === "string"
+      ? [body.subjectId]
+      : [];
+  const subjectIds = rawSubjectIds.filter(
+    (subjectId): subjectId is string =>
+      typeof subjectId === "string" && subjectId.length > 0,
+  );
   const action = body.action === "unassign" ? "unassign" : body.action ?? "assign";
 
   if (
     studentIds.length === 0 ||
     studentIds.length > 500 ||
     studentIds.length !== rawStudentIds.length ||
-    !subjectId
+    subjectIds.length === 0 ||
+    subjectIds.length > 100 ||
+    subjectIds.length !== rawSubjectIds.length ||
+    studentIds.length * subjectIds.length > 5000
   ) {
     return NextResponse.json(
-      { error: "Provide between 1 and 500 valid student IDs and a subject ID" },
+      {
+        error:
+          "Provide 1 to 500 valid student IDs and 1 to 100 valid subject IDs, with no more than 5,000 student-subject assignments",
+      },
       { status: 400 },
     );
   }
   if (studentIds.length !== new Set(studentIds).size) {
     return NextResponse.json({ error: "Duplicate student IDs are not allowed" }, { status: 400 });
+  }
+  if (subjectIds.length !== new Set(subjectIds).size) {
+    return NextResponse.json({ error: "Duplicate subject IDs are not allowed" }, { status: 400 });
   }
   if (action !== "assign" && action !== "unassign") {
     return NextResponse.json({ error: "Invalid enrollment action" }, { status: 400 });
@@ -157,28 +175,33 @@ export async function POST(req: Request) {
     );
   }
 
-  const { data: assignment, error: assignmentError } = await adminSupabase
+  const { data: assignments, error: assignmentError } = await adminSupabase
     .from("class_subject_assignments")
     .select("is_compulsory")
     .eq("form", forms[0])
-    .eq("subject_id", subjectId)
-    .maybeSingle();
+    .in("subject_id", subjectIds);
   if (assignmentError) {
     return NextResponse.json({ error: assignmentError.message }, { status: 500 });
   }
-  if (!assignment || assignment.is_compulsory) {
+  if (
+    !assignments ||
+    assignments.length !== subjectIds.length ||
+    assignments.some((assignment) => assignment.is_compulsory)
+  ) {
     return NextResponse.json(
-      { error: "This subject is not an optional subject for the students' form" },
+      { error: "One or more subjects are not optional for the students' form" },
       { status: 400 },
     );
   }
 
   if (action === "assign") {
-    const payload = studentIds.map((studentId) => ({
-      student_id: studentId,
-      subject_id: subjectId,
-      enrollment_type: "optional" as const,
-    }));
+    const payload = studentIds.flatMap((studentId) =>
+      subjectIds.map((subjectId) => ({
+        student_id: studentId,
+        subject_id: subjectId,
+        enrollment_type: "optional" as const,
+      })),
+    );
 
     const { error } = await adminSupabase
       .from("student_subjects")
@@ -195,7 +218,7 @@ export async function POST(req: Request) {
     .from("student_subjects")
     .delete()
     .in("student_id", studentIds)
-    .eq("subject_id", subjectId)
+    .in("subject_id", subjectIds)
     .eq("enrollment_type", "optional");
 
   if (error) {

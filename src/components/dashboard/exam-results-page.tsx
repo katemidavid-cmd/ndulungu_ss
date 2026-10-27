@@ -375,12 +375,16 @@ export function ExamResultsPage({
 
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return reportRows.filter((row) => {
-      const matchesSearch = !query || (row.student?.full_name ?? "").toLowerCase().includes(query);
-      const matchesDivision = divisionFilter === "All" || row.division === divisionFilter;
-      const matchesSex = sexFilter === "All" || row.student?.sex === sexFilter;
-      return matchesSearch && matchesDivision && matchesSex;
-    });
+    return reportRows
+      .filter((row) => {
+        const matchesSearch = !query || (row.student?.full_name ?? "").toLowerCase().includes(query);
+        const matchesDivision = divisionFilter === "All" || row.division === divisionFilter;
+        const matchesSex = sexFilter === "All" || row.student?.sex === sexFilter;
+        return matchesSearch && matchesDivision && matchesSex;
+      })
+      .sort((a, b) =>
+        (a.student?.full_name ?? "").localeCompare(b.student?.full_name ?? ""),
+      );
   }, [divisionFilter, reportRows, search, sexFilter]);
 
   const divisionSummary = useMemo(

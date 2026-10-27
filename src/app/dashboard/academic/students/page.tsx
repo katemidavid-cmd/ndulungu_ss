@@ -194,8 +194,8 @@ export default function StudentsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Student | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [optionalSubjects, setOptionalSubjects] = useState<OptionalSubject[]>([]);
-  const [selectedOptionalSubjectId, setSelectedOptionalSubjectId] = useState("");
-  const [enrolledStudentIds, setEnrolledStudentIds] = useState<Set<string>>(new Set());
+  const [selectedOptionalSubjectIds, setSelectedOptionalSubjectIds] = useState<Set<string>>(new Set());
+  const [enrolledSubjects, setEnrolledSubjects] = useState<Set<string>>(new Set());
   const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
   const [bulkSaving, setBulkSaving] = useState(false);
   const [page, setPage] = useState(1);
@@ -284,6 +284,7 @@ export default function StudentsPage() {
         pageSize: String(pageSize),
         classId: effectiveClassId,
         includeCounts: "1",
+        sort: "name",
       });
       if (debouncedSearch) params.set("search", debouncedSearch);
 
@@ -321,57 +322,85 @@ export default function StudentsPage() {
 
   useEffect(() => {
     void Promise.resolve().then(() => setSelectedStudentIds(new Set()));
-  }, [effectiveClassId, selectedOptionalSubjectId]);
+  }, [effectiveClassId]);
 
   const loadOptionalSubjects = useCallback(async () => {
     if (!effectiveClassId) {
       setOptionalSubjects([]);
-      setSelectedOptionalSubjectId("");
-      setEnrolledStudentIds(new Set());
+      setSelectedOptionalSubjectIds(new Set());
+      setEnrolledSubjects(new Set());
       return;
     }
     try {
       const res = await fetch(`/api/student-subjects?classId=${encodeURIComponent(effectiveClassId)}`);
       const data = await res.json();
       if (res.ok) {
-        const subjects = (data.subjects || []) as OptionalSubject[];
+        const subjects = ((data.subjects || []) as OptionalSubject[]).sort((a, b) =>
+          a.name.localeCompare(b.name),
+        );
         setOptionalSubjects(subjects);
-        if (!subjects.some((s) => s.id === selectedOptionalSubjectId)) {
-          setSelectedOptionalSubjectId(subjects[0]?.id || "");
-        }
+        setSelectedOptionalSubjectIds((current) => {
+          const validIds = new Set(subjects.map((subject) => subject.id));
+          const retained = new Set([...current].filter((id) => validIds.has(id)));
+          return retained.size > 0 || subjects.length === 0
+            ? retained
+            : new Set([subjects[0].id]);
+        });
       } else {
-        setOptionalSubjects([]);
-        setSelectedOptionalSubjectId("");
+        throw new Error(data.error || "Unable to load optional subjects.");
       }
-    } catch {
+    } catch (error) {
       setOptionalSubjects([]);
-      setSelectedOptionalSubjectId("");
+      setSelectedOptionalSubjectIds(new Set());
+      showToast(
+        "error",
+        error instanceof Error ? error.message : "Unable to load optional subjects.",
+      );
     }
-  }, [effectiveClassId, selectedOptionalSubjectId]);
+  }, [effectiveClassId, showToast]);
 
   useEffect(() => {
     void Promise.resolve().then(loadOptionalSubjects);
   }, [loadOptionalSubjects]);
 
   const loadEnrollmentStatus = useCallback(async () => {
-    if (!effectiveClassId || !selectedOptionalSubjectId) {
-      setEnrolledStudentIds(new Set());
+    if (!effectiveClassId || selectedOptionalSubjectIds.size === 0) {
+      setEnrolledSubjects(new Set());
       return;
     }
     try {
+      const params = new URLSearchParams({
+        classId: effectiveClassId,
+      });
+      selectedOptionalSubjectIds.forEach((subjectId) =>
+        params.append("subjectId", subjectId),
+      );
       const res = await fetch(
-        `/api/student-subjects/status?classId=${encodeURIComponent(effectiveClassId)}&subjectId=${encodeURIComponent(selectedOptionalSubjectId)}`
+        `/api/student-subjects/status?${params.toString()}`
       );
       const data = await res.json();
       if (res.ok) {
-        setEnrolledStudentIds(new Set((data.enrolledStudentIds || []) as string[]));
+        setEnrolledSubjects(
+          new Set(
+            (data.enrollments || []).map(
+              (enrollment: { studentId: string; subjectId: string }) =>
+                `${enrollment.studentId}:${enrollment.subjectId}`,
+            ),
+          ),
+        );
       } else {
-        setEnrolledStudentIds(new Set());
+        throw new Error(data.error || "Unable to load subject enrollment status.");
       }
-    } catch {
-      setEnrolledStudentIds(new Set());
+    } catch (error) {
+      setEnrolledSubjects(new Set());
+      showToast(
+        "error",
+        error instanceof Error
+          ? error.message
+          : "Unable to load subject enrollment status.",
+      );
     }
-  }, [effectiveClassId, selectedOptionalSubjectId]);
+  }, [effectiveClassId, selectedOptionalSubjectIds, showToast]);
 
   useEffect(() => {
     void Promise.resolve().then(loadEnrollmentStatus);
@@ -563,7 +592,7 @@ export default function StudentsPage() {
   }
 
   async function handleBulkOptionalAssignment(action: "assign" | "unassign") {
-    if (!selectedOptionalSubjectId || selectedStudentIds.size === 0) return;
+    if (selectedOptionalSubjectIds.size === 0 || selectedStudentIds.size === 0) return;
     setBulkSaving(true);
     try {
       const res = await fetch("/api/student-subjects", {
@@ -571,7 +600,7 @@ export default function StudentsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           studentIds: Array.from(selectedStudentIds),
-          subjectId: selectedOptionalSubjectId,
+          subjectIds: Array.from(selectedOptionalSubjectIds),
           action,
         }),
       });
@@ -583,8 +612,8 @@ export default function StudentsPage() {
       showToast(
         "success",
         action === "assign"
-          ? `${selectedStudentIds.size} student(s) assigned to optional subject.`
-          : `${selectedStudentIds.size} student(s) unassigned from optional subject.`
+          ? `${selectedOptionalSubjectIds.size} subject(s) assigned to ${selectedStudentIds.size} student(s).`
+          : `${selectedOptionalSubjectIds.size} subject(s) unassigned from ${selectedStudentIds.size} student(s).`
       );
       setSelectedStudentIds(new Set());
       await loadEnrollmentStatus();
@@ -842,7 +871,7 @@ export default function StudentsPage() {
                       <div>
                         <h4 className="text-sm font-bold text-slate-900">Bulk optional subject assignment</h4>
                         <p className="mt-1 text-xs leading-5 text-slate-500">
-                          Select an optional subject for this form, tick students, then assign or unassign.
+                          Choose one or more subjects, select students, then assign or unassign them together.
                         </p>
                       </div>
                       {optionalSubjects.length === 0 && (
@@ -852,26 +881,72 @@ export default function StudentsPage() {
                       )}
                     </div>
                     {optionalSubjects.length > 0 && (
-                      <div className="mt-3 flex flex-wrap items-center gap-3">
-                        <select
-                          value={selectedOptionalSubjectId}
-                          onChange={(event) => setSelectedOptionalSubjectId(event.target.value)}
-                          className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 sm:w-auto"
-                        >
-                          {optionalSubjects.map((subject) => (
-                            <option key={subject.id} value={subject.id}>
-                              {subject.name} ({subject.subject_code})
-                            </option>
-                          ))}
-                        </select>
-                        <span className="text-xs font-medium text-slate-500">
-                          {selectedStudentIds.size} student(s) selected
-                        </span>
-                        <div className="ml-auto flex flex-wrap items-center gap-2">
+                      <div className="mt-4 space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-semibold text-slate-700">
+                            Optional subjects ({selectedOptionalSubjectIds.size} selected)
+                          </p>
+                          <div className="flex gap-3 text-xs font-semibold">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSelectedOptionalSubjectIds(
+                                  new Set(optionalSubjects.map((subject) => subject.id)),
+                                )
+                              }
+                              className="text-blue-700 hover:text-blue-900"
+                            >
+                              Select all
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedOptionalSubjectIds(new Set())}
+                              className="text-slate-600 hover:text-slate-900"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                          {optionalSubjects.map((subject) => {
+                            const isSubjectSelected = selectedOptionalSubjectIds.has(subject.id);
+                            return (
+                              <label
+                                key={subject.id}
+                                className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 text-sm transition ${
+                                  isSubjectSelected
+                                    ? "border-blue-300 bg-blue-50 text-blue-900"
+                                    : "border-slate-200 bg-white text-slate-700 hover:border-blue-200"
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSubjectSelected}
+                                  onChange={() =>
+                                    setSelectedOptionalSubjectIds((current) => {
+                                      const next = new Set(current);
+                                      if (next.has(subject.id)) next.delete(subject.id);
+                                      else next.add(subject.id);
+                                      return next;
+                                    })
+                                  }
+                                  className="h-4 w-4 rounded border-slate-300 text-blue-700 focus:ring-blue-600"
+                                />
+                                <span className="min-w-0 flex-1 font-medium">{subject.name}</span>
+                                <span className="shrink-0 text-xs text-slate-500">{subject.subject_code}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-3">
+                          <span className="text-xs font-medium text-slate-500">
+                            {selectedStudentIds.size} student(s) selected
+                          </span>
+                          <div className="ml-auto flex flex-wrap items-center gap-2">
                           <button
                             type="button"
                             onClick={() => void handleBulkOptionalAssignment("assign")}
-                            disabled={bulkSaving || selectedStudentIds.size === 0}
+                            disabled={bulkSaving || selectedStudentIds.size === 0 || selectedOptionalSubjectIds.size === 0}
                             className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                           >
                             {bulkSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
@@ -880,12 +955,13 @@ export default function StudentsPage() {
                           <button
                             type="button"
                             onClick={() => void handleBulkOptionalAssignment("unassign")}
-                            disabled={bulkSaving || selectedStudentIds.size === 0}
+                            disabled={bulkSaving || selectedStudentIds.size === 0 || selectedOptionalSubjectIds.size === 0}
                             className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-white disabled:opacity-50"
                           >
                             {bulkSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
                             Unassign selected
                           </button>
+                          </div>
                         </div>
                       </div>
                     )}
@@ -919,7 +995,9 @@ export default function StudentsPage() {
                     </thead>
                     <tbody>
                       {filteredStudents.map((student, index) => {
-                        const isEnrolled = enrolledStudentIds.has(student.id);
+                        const enrolledCount = [...selectedOptionalSubjectIds].filter((subjectId) =>
+                          enrolledSubjects.has(`${student.id}:${subjectId}`),
+                        ).length;
                         const isSelected = selectedStudentIds.has(student.id);
                         return (
                           <tr key={student.id} className={`border-b border-gray-100 last:border-0 ${isSelected ? "bg-blue-50/40" : ""}`}>
@@ -940,16 +1018,16 @@ export default function StudentsPage() {
                             <td className="px-4 py-3 text-sm font-medium text-gray-900">{student.full_name}</td>
                             <td className="px-4 py-3 text-sm text-gray-700">{student.sex === "M" ? "Male" : "Female"}</td>
                             <td className="px-4 py-3 text-sm">
-                              {selectedOptionalSubjectId ? (
-                                isEnrolled ? (
-                                  <span className="inline-flex items-center rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 ring-1 ring-green-200">
-                                    Assigned
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 ring-1 ring-gray-200">
-                                    Not assigned
-                                  </span>
-                                )
+                              {selectedOptionalSubjectIds.size > 0 ? (
+                                <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${
+                                  enrolledCount === selectedOptionalSubjectIds.size
+                                    ? "bg-green-50 text-green-700 ring-green-200"
+                                    : enrolledCount > 0
+                                      ? "bg-amber-50 text-amber-700 ring-amber-200"
+                                      : "bg-gray-100 text-gray-600 ring-gray-200"
+                                }`}>
+                                  {enrolledCount}/{selectedOptionalSubjectIds.size} assigned
+                                </span>
                               ) : (
                                 <span className="text-xs text-gray-400">-</span>
                               )}
@@ -980,7 +1058,9 @@ export default function StudentsPage() {
 
                   <div className="max-h-[60vh] divide-y divide-slate-100 overflow-y-auto md:hidden">
                     {filteredStudents.map((student, index) => {
-                      const isEnrolled = enrolledStudentIds.has(student.id);
+                      const enrolledCount = [...selectedOptionalSubjectIds].filter((subjectId) =>
+                        enrolledSubjects.has(`${student.id}:${subjectId}`),
+                      ).length;
                       const isSelected = selectedStudentIds.has(student.id);
                       return (
                         <article
@@ -1012,16 +1092,16 @@ export default function StudentsPage() {
                                 </span>
                               </div>
                               <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                                {selectedOptionalSubjectId ? (
-                                  isEnrolled ? (
-                                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                                      Optional subject assigned
-                                    </span>
-                                  ) : (
-                                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                                      Not assigned
-                                    </span>
-                                  )
+                                {selectedOptionalSubjectIds.size > 0 ? (
+                                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                    enrolledCount === selectedOptionalSubjectIds.size
+                                      ? "bg-emerald-50 text-emerald-700"
+                                      : enrolledCount > 0
+                                        ? "bg-amber-50 text-amber-700"
+                                        : "bg-slate-100 text-slate-600"
+                                  }`}>
+                                    {enrolledCount}/{selectedOptionalSubjectIds.size} subjects assigned
+                                  </span>
                                 ) : (
                                   <span className="text-xs text-slate-400">Student {(page - 1) * pageSize + index + 1}</span>
                                 )}

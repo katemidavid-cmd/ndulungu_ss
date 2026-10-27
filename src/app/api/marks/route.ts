@@ -69,7 +69,10 @@ async function getEligibleStudents(
     .from("students")
     .select("id, full_name, class_id")
     .in("class_id", classIds)
-    .order("full_name");
+    .order("first_name")
+    .order("middle_name")
+    .order("last_name")
+    .order("id");
   if (studentsError) throw new Error(studentsError.message);
 
   const { data: classSubject, error: classSubjectError } = await admin
@@ -261,7 +264,9 @@ export async function GET(request: Request) {
 
       const [listResult, overallResult] = await Promise.all([
         listQuery
-          .order("full_name")
+          .order("first_name")
+          .order("middle_name")
+          .order("last_name")
           .order("id")
           .range(from, from + pageSize - 1),
         admin
@@ -295,7 +300,9 @@ export async function GET(request: Request) {
 
       const [listResult, overallResult] = await Promise.all([
         listQuery
-          .order("full_name", { referencedTable: "students" })
+          .order("first_name", { referencedTable: "students" })
+          .order("middle_name", { referencedTable: "students" })
+          .order("last_name", { referencedTable: "students" })
           .order("student_id")
           .range(from, from + pageSize - 1),
         admin
