@@ -447,6 +447,7 @@ export function ReportCardsPage() {
   const studentOptions = useMemo(
     () =>
       [...(data?.students ?? [])].sort((a, b) =>
+        a.sex.localeCompare(b.sex) ||
         a.full_name.localeCompare(b.full_name, "sw"),
       ),
     [data],
@@ -464,11 +465,12 @@ export function ReportCardsPage() {
     return data.students
       .filter((student) => studentFilter === "all" || student.id === studentFilter)
       .sort((a, b) => {
-        const positionA = selectedExamResults[a.id]?.position ?? Number.MAX_SAFE_INTEGER;
-        const positionB = selectedExamResults[b.id]?.position ?? Number.MAX_SAFE_INTEGER;
-        return positionA - positionB || a.full_name.localeCompare(b.full_name, "sw");
+        return (
+          a.sex.localeCompare(b.sex) ||
+          a.full_name.localeCompare(b.full_name, "sw")
+        );
       });
-  }, [data, selectedExamResults, studentFilter]);
+  }, [data, studentFilter]);
 
   function selectExam(nextExamId: string) {
     if (!nextExamId || nextExamId === selectedExamId) return;

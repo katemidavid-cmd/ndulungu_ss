@@ -124,6 +124,7 @@ export async function GET(request: Request) {
           .from("students")
           .select("id, full_name, sex, class_id")
           .in("id", studentIds)
+          .order("sex", { ascending: false })
           .order("full_name")
       : Promise.resolve({ data: [], error: null }),
     admin.from("subjects").select("id, name, subject_code").order("name"),

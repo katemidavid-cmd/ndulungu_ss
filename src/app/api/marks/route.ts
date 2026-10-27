@@ -67,7 +67,7 @@ async function getEligibleStudents(
 
   const { data: students, error: studentsError } = await admin
     .from("students")
-    .select("id, full_name, class_id")
+    .select("id, full_name, class_id, sex")
     .in("class_id", classIds)
     .order("first_name")
     .order("middle_name")
@@ -294,6 +294,7 @@ export async function GET(request: Request) {
       id: string;
       full_name: string;
       class_id: string;
+      sex: "F" | "M";
     };
 
     let students: StudentRow[] = [];
@@ -303,7 +304,7 @@ export async function GET(request: Request) {
     if (classSubject.is_compulsory) {
       let listQuery = admin
         .from("students")
-        .select("id, full_name, class_id", { count: "exact" })
+        .select("id, full_name, class_id, sex", { count: "exact" })
         .in("class_id", classIds);
       if (search) {
         listQuery = listQuery.ilike("full_name", `%${search}%`);
@@ -311,9 +312,8 @@ export async function GET(request: Request) {
 
       const [listResult, overallResult] = await Promise.all([
         listQuery
-          .order("first_name")
-          .order("middle_name")
-          .order("last_name")
+          .order("sex", { ascending: false })
+          .order("full_name")
           .order("id")
           .range(from, from + pageSize - 1),
         admin
@@ -334,7 +334,7 @@ export async function GET(request: Request) {
       let listQuery = admin
         .from("student_subjects")
         .select(
-          "student_id, students!inner(id, full_name, class_id)",
+          "student_id, students!inner(id, full_name, class_id, sex)",
           { count: "exact" },
         )
         .eq("subject_id", subjectId)
@@ -347,9 +347,8 @@ export async function GET(request: Request) {
 
       const [listResult, overallResult] = await Promise.all([
         listQuery
-          .order("first_name", { referencedTable: "students" })
-          .order("middle_name", { referencedTable: "students" })
-          .order("last_name", { referencedTable: "students" })
+          .order("sex", { ascending: false, referencedTable: "students" })
+          .order("full_name", { referencedTable: "students" })
           .order("student_id")
           .range(from, from + pageSize - 1),
         admin

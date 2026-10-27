@@ -45,8 +45,6 @@ export async function GET(request: Request) {
   const classId = searchParams.get("classId")?.trim() ?? "";
   const form = searchParams.get("form")?.trim() ?? "";
   const includeCounts = searchParams.get("includeCounts") === "1";
-  const sortByName = searchParams.get("sort") === "name";
-
   const admin = createAdminClient();
   const { data: classRows, error: classesError } = await admin
     .from("classes")
@@ -95,16 +93,10 @@ export async function GET(request: Request) {
     studentsQuery = studentsQuery.ilike("full_name", `%${search}%`);
   }
 
-  studentsQuery = sortByName
-    ? studentsQuery
-        .order("first_name")
-        .order("middle_name")
-        .order("last_name")
-        .order("id")
-    : studentsQuery
-        .order("last_name")
-        .order("first_name")
-        .order("id");
+  studentsQuery = studentsQuery
+    .order("sex", { ascending: false })
+    .order("full_name")
+    .order("id");
   const { data: students, count, error: studentsError } = await studentsQuery.range(
     from,
     to,

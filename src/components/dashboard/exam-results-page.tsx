@@ -383,6 +383,7 @@ export function ExamResultsPage({
         return matchesSearch && matchesDivision && matchesSex;
       })
       .sort((a, b) =>
+        (a.student?.sex ?? "M").localeCompare(b.student?.sex ?? "M") ||
         (a.student?.full_name ?? "").localeCompare(b.student?.full_name ?? ""),
       );
   }, [divisionFilter, reportRows, search, sexFilter]);

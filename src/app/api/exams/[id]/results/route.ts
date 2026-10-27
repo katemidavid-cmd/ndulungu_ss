@@ -126,9 +126,22 @@ export async function GET(_request: Request, { params }: RouteContext) {
       address: "",
     },
     subjects,
-    results: (results ?? []).map((result) => ({
-      ...result,
-      student: studentsById.get(result.student_id) ?? null,
-    })),
+    results: (results ?? [])
+      .map((result) => ({
+        ...result,
+        student: studentsById.get(result.student_id) ?? null,
+      }))
+      .sort((a, b) => {
+        const sexOrder = (a.student?.sex ?? "M").localeCompare(
+          b.student?.sex ?? "M",
+        );
+        return (
+          sexOrder ||
+          (a.student?.full_name ?? "").localeCompare(
+            b.student?.full_name ?? "",
+          ) ||
+          a.student_id.localeCompare(b.student_id)
+        );
+      }),
   });
 }
