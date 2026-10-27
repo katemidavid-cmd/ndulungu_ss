@@ -52,6 +52,8 @@ type CsvRow = {
   gender?: string;
   class?: string;
   class_name?: string;
+  darasa?: string;
+  mkondo?: string;
   form?: string;
   stream?: string;
 };
@@ -103,6 +105,11 @@ function normalizeClassKey(value: unknown) {
 
 function buildClassLookup(classes: SchoolClass[]) {
   const lookup = new Map<string, string>();
+  const classesPerForm = new Map<string, number>();
+
+  for (const item of classes) {
+    classesPerForm.set(item.form, (classesPerForm.get(item.form) ?? 0) + 1);
+  }
 
   for (const item of classes) {
     const roman = item.form.replace(/^Form\s+/i, "");
@@ -122,6 +129,12 @@ function buildClassLookup(classes: SchoolClass[]) {
     ]) {
       lookup.set(normalizeClassKey(alias), item.id);
     }
+
+    if (classesPerForm.get(item.form) === 1) {
+      lookup.set(normalizeClassKey(item.form), item.id);
+      lookup.set(normalizeClassKey(roman), item.id);
+      lookup.set(normalizeClassKey(number), item.id);
+    }
   }
 
   return lookup;
@@ -133,8 +146,22 @@ function getClassId(row: CsvRow, lookup: Map<string, string>) {
     return lookup.get(normalizeClassKey(directClass)) ?? null;
   }
 
-  if (row.form?.trim() && row.stream?.trim()) {
-    return lookup.get(normalizeClassKey(`${row.form} ${row.stream}`)) ?? null;
+  const darasa = row.darasa?.trim();
+  const mkondo = row.mkondo?.trim();
+  if (darasa && mkondo) {
+    return lookup.get(normalizeClassKey(`${darasa} ${mkondo}`)) ?? null;
+  }
+  if (darasa) {
+    return lookup.get(normalizeClassKey(darasa)) ?? null;
+  }
+
+  const form = row.form?.trim();
+  const stream = row.stream?.trim() ?? mkondo;
+  if (form && stream) {
+    return lookup.get(normalizeClassKey(`${form} ${stream}`)) ?? null;
+  }
+  if (form) {
+    return lookup.get(normalizeClassKey(form)) ?? null;
   }
 
   return null;
@@ -142,7 +169,7 @@ function getClassId(row: CsvRow, lookup: Map<string, string>) {
 
 function downloadTemplate() {
   const csv =
-    "first_name,middle_name,last_name,sex,class\nJohn,Paul,Mdoe,M,Form I A\nMary,,Kweka,F,Form I A\n";
+    "first_name,middle_name,last_name,sex,class\nJohn,Paul,Mdoe,M,Form I\nMary,,Kweka,F,Form I\n";
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -398,11 +425,6 @@ export default function StudentsPage() {
 
     if (!file) return;
 
-    if (!effectiveClassId) {
-      showToast("error", "Select a stream first before importing from CSV.");
-      return;
-    }
-
     setImporting(true);
     try {
       Papa.parse<CsvRow>(file, {
@@ -432,8 +454,9 @@ export default function StudentsPage() {
             const lastName = getLastName(row);
             const sex = getSex(row);
             const hasClassValue = Boolean(
-              (row.class ?? row.class_name)?.trim() ||
-                (row.form?.trim() && row.stream?.trim()),
+              (row.class ?? row.class_name ?? row.darasa)?.trim() ||
+                row.form?.trim() ||
+                row.mkondo?.trim(),
             );
             const csvClassId = getClassId(row, classLookup);
             const classId = csvClassId ?? (hasClassValue ? null : effectiveClassId);
@@ -456,7 +479,7 @@ export default function StudentsPage() {
             setImporting(false);
             showToast(
               "error",
-              "No valid rows found. Required columns: first_name/first name, last_name/surname, sex/gender (M/F), and class (or select a stream).",
+              "No valid rows found. Required columns: first_name/first name, last_name/surname, sex/gender (M/F), and class/darasa. Stream is optional.",
             );
             return;
           }
@@ -584,37 +607,35 @@ export default function StudentsPage() {
           </span>
           <h2 className="mt-2 text-xl font-bold tracking-tight sm:text-2xl">Student Registration</h2>
           <p className="mt-2 max-w-xl text-sm leading-6 text-blue-100/90 sm:text-base">
-            Register students in the correct form and stream, manually or from a CSV file.
+            Register students manually, or import them from Excel/CSV using the class column. Stream is optional.
           </p>
         </div>
-        {selectedClass && (
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-            <button
-              type="button"
-              onClick={downloadTemplate}
-              className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 text-sm font-semibold text-white transition hover:bg-white/20"
-            >
-              <Download className="h-4 w-4" />
-              Download Template
-            </button>
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={importing}
-              className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-bold text-blue-900 shadow-sm transition hover:bg-blue-50 disabled:opacity-50"
-            >
-              {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
-              Register by CSV
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".csv,text/csv"
-              className="hidden"
-              onChange={(e) => void handleCsvImport(e)}
-            />
-          </div>
-        )}
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          <button
+            type="button"
+            onClick={downloadTemplate}
+            className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 text-sm font-semibold text-white transition hover:bg-white/20"
+          >
+            <Download className="h-4 w-4" />
+            Download Template
+          </button>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing}
+            className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-bold text-blue-900 shadow-sm transition hover:bg-blue-50 disabled:opacity-50"
+          >
+            {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
+            Register by CSV
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(e) => void handleCsvImport(e)}
+          />
+        </div>
         </div>
       </header>
 
