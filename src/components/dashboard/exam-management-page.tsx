@@ -102,9 +102,11 @@ export function ExamManagementPage({
   const [examsLoading, setExamsLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
   const [statusFilter, setStatusFilter] = useState(
-    ["All", "Draft", "Active", "Processed"].includes(initialStatus)
-      ? initialStatus
-      : "All",
+    !canManageExams
+      ? "Active"
+      : ["All", "Draft", "Active", "Processed"].includes(initialStatus)
+        ? initialStatus
+        : "All",
   );
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<Set<string>>(
     new Set(),
@@ -170,7 +172,7 @@ export function ExamManagementPage({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPage(1);
-  }, [debouncedSearch, pageSize, statusFilter, selectedYear]);
+  }, [debouncedSearch, pageSize, selectedYear, statusFilter]);
 
   useEffect(() => {
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -346,79 +348,48 @@ export function ExamManagementPage({
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6">
-      <header className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-800 p-4 text-white shadow-lg sm:p-5">
-        <div className="absolute -right-10 -top-20 h-56 w-56 rounded-full bg-white/5 blur-2xl" />
-        <div className="relative flex flex-col items-start gap-4">
+    <div className="mx-auto w-full max-w-7xl space-y-4">
+      <header className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-blue-100">
-              <ClipboardList className="h-3.5 w-3.5" />
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
               Assessment centre
-            </span>
-            <h2 className="mt-2 text-xl font-bold tracking-tight sm:text-2xl">
+            </p>
+            <h2 className="mt-1 text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
               {canManageExams ? "Exam Management" : "My Exams"}
             </h2>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-blue-100/90 sm:text-base">
-              {canManageExams
-                ? "Create examinations and keep track of drafts, active exams, and processed results."
-                : "View active examinations across all classes and forms, including upcoming exams."}
-            </p>
           </div>
           {canManageExams && (
             <button
               type="button"
               onClick={() => setShowCreateForm(true)}
               disabled={!activePeriod}
-              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-bold text-blue-900 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+              className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg bg-blue-700 px-3 text-xs font-bold text-white transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-3.5 w-3.5" />
               Create examination
             </button>
           )}
         </div>
       </header>
 
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {[
-          { label: "Total exams", value: overallTotal, icon: ClipboardList },
-          ...(canManageExams
-            ? [{ label: "Drafts", value: draftCount, icon: Clock3 }]
-            : []),
-          { label: "Active", value: activeCount, icon: CalendarDays },
-          { label: "Processed", value: processedCount, icon: Check },
-        ].map(({ label, value, icon: Icon }) => (
-          <div
-            key={label}
-            className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
-          >
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
-              <Icon className="h-4 w-4" />
-            </span>
-            <p className="mt-3 text-sm text-slate-500">{label}</p>
-            <p className="mt-0.5 text-xl font-bold text-slate-950">
-              {loading || examsLoading ? "-" : value}
-            </p>
-          </div>
-        ))}
-      </section>
-
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-2 border-b border-slate-200 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
           <label className="relative block w-full sm:max-w-md">
-            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search exam, form, or year"
-              className={`${inputClass} pl-10`}
+              className={`${inputClass} min-h-10 rounded-lg pl-9 text-sm`}
             />
           </label>
-          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
             <select
               value={selectedYear}
               onChange={(event) => setSelectedYear(event.target.value)}
-              className={`${inputClass} sm:w-56`}
+              className={`${inputClass} min-h-10 rounded-lg text-sm sm:w-52`}
               aria-label="Filter exams by academic year"
             >
               <option value="">
@@ -439,13 +410,20 @@ export function ExamManagementPage({
             <select
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value)}
-              className={`${inputClass} sm:w-48`}
+              className={`${inputClass} min-h-10 rounded-lg text-sm sm:w-40`}
               aria-label="Filter exams by status"
+              disabled={!canManageExams && statusFilter === "Active"}
             >
-              <option>All</option>
-              {canManageExams && <option>Draft</option>}
-              <option>Active</option>
-              <option>Processed</option>
+              {canManageExams ? (
+                <>
+                  <option>All</option>
+                  <option>Draft</option>
+                  <option>Active</option>
+                  <option>Processed</option>
+                </>
+              ) : (
+                <option>Active</option>
+              )}
             </select>
           </div>
         </div>
@@ -484,22 +462,22 @@ export function ExamManagementPage({
             )}
           </div>
         ) : (
-          <div className="divide-y divide-slate-100">
+          <div className="grid gap-3 p-3 md:grid-cols-2 xl:grid-cols-3">
             {visibleExams.map((exam) => (
               <article
                 key={exam.id}
-                className="flex flex-col gap-4 p-4 transition hover:bg-slate-50/70 sm:p-5"
+                className="flex flex-col justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/40 p-3 transition hover:bg-slate-50"
               >
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex min-w-0 items-start gap-3">
-                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
-                      <BookOpen className="h-5 w-5" />
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-start gap-2.5">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700">
+                      <BookOpen className="h-4 w-4" />
                     </span>
                     <div className="min-w-0">
-                      <h3 className="break-words font-bold text-slate-950">
+                      <h3 className="break-words text-sm font-bold text-slate-950">
                         {exam.name}
                       </h3>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
                         <span className="font-semibold text-slate-700">
                           {exam.class_form}
                         </span>
@@ -511,36 +489,38 @@ export function ExamManagementPage({
                           <>
                             <span aria-hidden="true">·</span>
                             <span className="font-semibold text-emerald-700">
-                              Practical marks
+                              Practical
                             </span>
                           </>
                         )}
                       </div>
-                      <p className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
-                        <CalendarDays className="h-3.5 w-3.5" />
-                        {formatDate(exam.start_date)} – {formatDate(exam.end_date)}
-                      </p>
                     </div>
                   </div>
                   <span
-                    className={`inline-flex w-fit shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ring-1 ring-inset ${statusStyle(exam.status)}`}
+                    className={`inline-flex w-fit shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ring-1 ring-inset ${statusStyle(exam.status)}`}
                   >
                     {exam.status}
                   </span>
                 </div>
+
+                <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+                  <CalendarDays className="h-3.5 w-3.5" />
+                  {formatDate(exam.start_date)} – {formatDate(exam.end_date)}
+                </p>
+
                 {(canManageExams || exam.status !== "Draft") && (
-                  <div className="flex flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:justify-end">
+                  <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-2">
                     {canManageExams && exam.status === "Draft" && (
                       <button
                         type="button"
                         disabled={updatingExamId !== null}
                         onClick={() => void updateExamStatus(exam, "activate")}
-                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-emerald-700 px-3 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {updatingExamId === exam.id ? (
-                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                          <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
                         ) : (
-                          <Play className="h-4 w-4" />
+                          <Play className="h-3.5 w-3.5" />
                         )}
                         Activate
                       </button>
@@ -550,12 +530,12 @@ export function ExamManagementPage({
                         type="button"
                         disabled={updatingExamId !== null}
                         onClick={() => setExamToProcess(exam)}
-                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-violet-700 px-4 text-sm font-semibold text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-violet-700 px-3 text-xs font-semibold text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {updatingExamId === exam.id ? (
-                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                          <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
                         ) : (
-                          <Calculator className="h-4 w-4" />
+                          <Calculator className="h-3.5 w-3.5" />
                         )}
                         Process
                       </button>
@@ -563,9 +543,9 @@ export function ExamManagementPage({
                     {canManageExams && exam.status === "Active" && (
                       <Link
                         href={`${dashboardBase}/marks?examId=${encodeURIComponent(exam.id)}`}
-                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800"
+                        className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-blue-700 px-3 text-xs font-semibold text-white hover:bg-blue-800"
                       >
-                        <FileText className="h-4 w-4" />
+                        <FileText className="h-3.5 w-3.5" />
                         Enter Marks
                       </Link>
                     )}
@@ -574,12 +554,12 @@ export function ExamManagementPage({
                         type="button"
                         disabled={updatingExamId !== null}
                         onClick={() => setExamToReopen(exam)}
-                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 text-xs font-semibold text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {updatingExamId === exam.id ? (
-                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                          <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
                         ) : (
-                          <RotateCcw className="h-4 w-4" />
+                          <RotateCcw className="h-3.5 w-3.5" />
                         )}
                         Reopen
                       </button>
@@ -587,18 +567,27 @@ export function ExamManagementPage({
                     {canManageExams && exam.status === "Processed" && (
                       <Link
                         href={`${dashboardBase}/exams/${exam.id}/results`}
-                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-semibold text-blue-800 hover:bg-blue-100"
+                        className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-blue-800 hover:bg-blue-100"
                       >
-                        <Eye className="h-4 w-4" />
+                        <Eye className="h-3.5 w-3.5" />
                         View Results
+                      </Link>
+                    )}
+                    {canManageExams && (
+                      <Link
+                        href={`${dashboardBase}/exams/${exam.id}/isal`}
+                        className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        <ClipboardList className="h-3.5 w-3.5" />
+                        ISAL
                       </Link>
                     )}
                     {!canManageExams && exam.status === "Active" && (
                       <Link
                         href={`${dashboardBase}/marks?examId=${encodeURIComponent(exam.id)}`}
-                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800"
+                        className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-blue-700 px-3 text-xs font-semibold text-white hover:bg-blue-800"
                       >
-                        <FileText className="h-4 w-4" />
+                        <FileText className="h-3.5 w-3.5" />
                         Enter Marks
                       </Link>
                     )}

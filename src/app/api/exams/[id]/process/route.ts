@@ -15,6 +15,18 @@ function gradeFor(percentage: number) {
   return "F";
 }
 
+function bestSevenPoints(subjects: Array<{ percentage: number | null; points: number | null }>) {
+  const ranked = [...subjects]
+    .filter((subject) => subject.percentage !== null && subject.points !== null)
+    .sort(
+      (a, b) =>
+        (b.percentage ?? 0) - (a.percentage ?? 0) ||
+        (b.points ?? 0) - (a.points ?? 0),
+    )
+    .slice(0, 7);
+  return ranked.reduce((sum, subject) => sum + (subject.points ?? 0), 0);
+}
+
 export async function POST(_request: Request, { params }: RouteContext) {
   const supabase = await createClient();
   const {
@@ -211,8 +223,8 @@ export async function POST(_request: Request, { params }: RouteContext) {
             : Math.round((rawTotal / maximum) * 10000) / 100;
         const grade =
           percentage === null
-            ? mark?.is_absent
-              ? "ABS"
+            ? mark?.is_absent || missing
+              ? "X"
               : "—"
             : gradeFor(percentage);
         const points =
@@ -252,45 +264,71 @@ export async function POST(_request: Request, { params }: RouteContext) {
               100,
           ) / 100
         : null;
-    const points = breakdown
-      .map((subject) => subject.points)
-      .filter((point): point is number => point !== null)
-      .sort((a, b) => a - b)
-      .slice(0, 7)
-      .reduce((sum, value) => sum + value, 0);
-    const isIncomplete = breakdown.some((subject) => subject.missing);
-    const division = isIncomplete
-      ? "Incomplete"
-      : points >= 7 && points <= 17
-        ? "DIV I"
-        : points >= 18 && points <= 21
-          ? "DIV II"
-          : points >= 22 && points <= 25
-            ? "DIV III"
-            : points >= 26 && points <= 33
-              ? "DIV IV"
-              : "DIV 0";
+    const completedCount = satSubjects.length;
+    const hasNoValidScores = completedCount === 0;
+    const isIncomplete =
+      !hasNoValidScores && completedCount < 7 && completedCount > 0;
+    const bestSevenPointsValue = bestSevenPoints(satSubjects);
+    const points = hasNoValidScores
+      ? null
+      : isIncomplete
+        ? null
+        : bestSevenPointsValue;
+    const division = hasNoValidScores
+      ? "ABS"
+      : isIncomplete
+        ? "INC"
+        : points !== null && points >= 7 && points <= 17
+          ? "DIV I"
+          : points !== null && points >= 18 && points <= 21
+            ? "DIV II"
+            : points !== null && points >= 22 && points <= 25
+              ? "DIV III"
+              : points !== null && points >= 26 && points <= 33
+                ? "DIV IV"
+                : points !== null
+                  ? "DIV 0"
+                  : "INC";
+    const grade = hasNoValidScores
+      ? "ABS"
+      : isIncomplete
+        ? "INC"
+        : average === null
+          ? "—"
+          : gradeFor(average);
 
     return {
       exam_id: id,
       student_id: student.id,
-      total_marks: totalMarks,
-      average,
-      grade: average === null ? "—" : gradeFor(average),
+      total_marks: hasNoValidScores ? 0 : totalMarks,
+      average: hasNoValidScores || isIncomplete ? null : average,
+      grade,
       division,
       points,
-      is_incomplete: isIncomplete,
-      subject_breakdown: breakdown,
+      is_incomplete: hasNoValidScores || isIncomplete,
+      subject_breakdown: breakdown.map((subject) => ({
+        ...subject,
+        grade:
+          hasNoValidScores
+            ? "X"
+            : subject.absent || subject.missing
+              ? "ABS"
+              : subject.grade,
+      })),
       computed_at: new Date().toISOString(),
     };
   });
 
-  const sortedRows = [...resultRows].sort(
-    (a, b) =>
-      (b.average ?? -1) - (a.average ?? -1) ||
-      a.points - b.points ||
-      a.student_id.localeCompare(b.student_id),
-  );
+  const sortedRows = [...resultRows]
+    .filter(
+      (result) => result.average !== null && result.division !== "INC" && result.division !== "ABS",
+    )
+    .sort(
+      (a, b) =>
+        (b.average ?? -1) - (a.average ?? -1) ||
+        (a.points ?? 0) - (b.points ?? 0) ||
+        a.student_id.localeCompare(b.student_id),
+    );
   let previousAverage: number | null = null;
   let previousPosition = 0;
   const rankedRows = sortedRows.map((result, index) => {
@@ -329,11 +367,17 @@ export async function POST(_request: Request, { params }: RouteContext) {
     incomplete_count?: number;
   };
 
+  const fallbackIncompleteCount = resultRows.filter(
+    (result) =>
+      result.is_incomplete ||
+      result.division === "INC" ||
+      result.division === "ABS",
+  ).length;
+
   return NextResponse.json({
     exam: { id, status: "Processed" },
     results_count: summary.results_count ?? rankedRows.length,
     incomplete_count:
-      summary.incomplete_count ??
-      rankedRows.filter((result) => result.is_incomplete).length,
+      summary.incomplete_count ?? fallbackIncompleteCount,
   });
 }

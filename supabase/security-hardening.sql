@@ -337,7 +337,12 @@ begin
   select count(*) into v_incomplete
   from public.exam_results
   where exam_id = p_exam_id
-    and is_incomplete = true;
+    and (
+      is_incomplete = true
+      or division = 'INC'
+      or division = 'Incomplete'
+      or division = 'ABS'
+    );
 
   update public.exams
   set

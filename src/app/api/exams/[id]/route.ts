@@ -30,7 +30,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
   let query = admin.from("exams").select("*").eq("id", id);
 
   if (profile.role === "teacher") {
-    query = query.in("status", ["Active", "Processed"]);
+    query = query.eq("status", "Active");
   }
 
   const { data: exam, error } = await query.maybeSingle();

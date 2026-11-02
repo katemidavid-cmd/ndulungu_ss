@@ -5,12 +5,11 @@ import Link from "next/link";
 import {
   ArrowLeft,
   Download,
-  Moon,
   Printer,
   Search,
-  Sun,
 } from "lucide-react";
 import { notify } from "@/lib/notifications";
+import { sortStudentsForDisplay } from "@/lib/student-sort";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
 
 type SubjectResult = {
@@ -97,7 +96,7 @@ type ResultsResponse = {
 };
 
 const GRADES = ["A", "B", "C", "D", "F"] as const;
-const DIVISIONS = ["DIV I", "DIV II", "DIV III", "DIV IV", "DIV 0", "Incomplete"];
+const DIVISIONS = ["DIV I", "DIV II", "DIV III", "DIV IV", "DIV 0"];
 const inputClass =
   "min-h-9 w-full rounded border border-slate-300 bg-white px-2.5 text-base text-slate-800 outline-none focus:border-slate-600 focus:ring-2 focus:ring-slate-400/20 sm:text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100";
 
@@ -112,6 +111,18 @@ function gradeFor(percentage: number) {
 
 function pointsFor(grade: string) {
   return ({ A: 1, B: 2, C: 3, D: 4, F: 5 } as Record<string, number>)[grade] ?? null;
+}
+
+function bestSevenPoints(subjects: Array<{ points: number | null; percentage: number | null }>) {
+  const ranked = [...subjects]
+    .filter((subject) => subject.points !== null && subject.percentage !== null)
+    .sort(
+      (a, b) =>
+        (b.percentage ?? 0) - (a.percentage ?? 0) ||
+        (b.points ?? 0) - (a.points ?? 0),
+    )
+    .slice(0, 7);
+  return ranked.reduce((sum, subject) => sum + (subject.points ?? 0), 0);
 }
 
 function divisionFor(points: number) {
@@ -162,7 +173,6 @@ export function ExamResultsPage({
   const [search, setSearch] = useState("");
   const [divisionFilter, setDivisionFilter] = useState("All");
   const [sexFilter, setSexFilter] = useState("All");
-  const [darkMode, setDarkMode] = useState(false);
   const [generatedAt, setGeneratedAt] = useState("");
 
   useEffect(() => {
@@ -297,7 +307,7 @@ export function ExamResultsPage({
           const maximum = hasPractical ? 150 : 100;
           const percentage =
             score === null ? null : Math.round((score / maximum) * 10000) / 100;
-          const grade = percentage === null ? (absent ? "ABS" : "—") : gradeFor(percentage);
+          const grade = percentage === null ? "—" : gradeFor(percentage);
           return {
             ...entry,
             subject: metadata?.name ?? entry.subject,
@@ -328,37 +338,74 @@ export function ExamResultsPage({
       const satPoints = sat
         .map((subject) => subject.points)
         .filter((point): point is number => point !== null);
-      const points = [...satPoints]
-        .sort((a, b) => a - b)
-        .slice(0, 7)
-        .reduce((sum, point) => sum + point, 0);
       const gpa =
         satPoints.length > 0
           ? Math.round((satPoints.reduce((sum, point) => sum + point, 0) / satPoints.length) * 100) / 100
           : null;
-      const isIncomplete =
-        result.is_incomplete || breakdown.some((subject) => subject.missing);
+      const hasNoValidScores = sat.length === 0;
+      const isIncomplete = !hasNoValidScores && sat.length < 7 && sat.length > 0;
+      const bestSeven = sat
+        .slice()
+        .sort(
+          (a, b) =>
+            (b.percentage ?? 0) - (a.percentage ?? 0) ||
+            (b.points ?? 0) - (a.points ?? 0),
+        )
+        .slice(0, 7);
+      const points = hasNoValidScores || isIncomplete
+        ? null
+        : bestSeven.reduce((sum, subject) => sum + (subject.points ?? 0), 0);
+      const displayGrade = hasNoValidScores
+        ? "ABS"
+        : isIncomplete
+          ? "INC"
+          : average === null
+            ? "—"
+            : gradeFor(average);
+      const division = hasNoValidScores
+        ? "ABS"
+        : isIncomplete
+          ? "INC"
+          : points !== null && points >= 7 && points <= 17
+            ? "DIV I"
+            : points !== null && points >= 18 && points <= 21
+              ? "DIV II"
+              : points !== null && points >= 22 && points <= 25
+                ? "DIV III"
+                : points !== null && points >= 26 && points <= 33
+                  ? "DIV IV"
+                  : points !== null
+                    ? "DIV 0"
+                    : "INC";
+      const subjectBreakdown = breakdown.map((subject) => ({
+        ...subject,
+        grade: hasNoValidScores ? "X" : subject.absent || subject.missing ? "ABS" : subject.grade,
+      }));
       return {
         ...result,
-        subject_breakdown: breakdown,
-        average,
-        grade: average === null ? "—" : gradeFor(average),
+        subject_breakdown: subjectBreakdown,
+        average: hasNoValidScores || isIncomplete ? null : average,
+        grade: displayGrade,
         points,
         gpa,
-        division: isIncomplete ? "Incomplete" : divisionFor(points),
-        is_incomplete: isIncomplete,
+        division,
+        is_incomplete: hasNoValidScores || isIncomplete,
         position: null as number | null,
       };
     });
-    computed.sort(
+    const rankable = computed.filter(
+      (result) => result.division !== "INC" && result.division !== "ABS" && result.average !== null,
+    );
+    rankable.sort(
       (a, b) =>
         (b.average ?? -1) - (a.average ?? -1) ||
-        a.points - b.points ||
+        (a.points ?? 0) - (b.points ?? 0) ||
         (a.student?.full_name ?? "").localeCompare(b.student?.full_name ?? ""),
     );
     let previousAverage: number | null = null;
     let previousPosition = 0;
-    return computed.map((result, index) => {
+    const rankedByPosition = new Map<string, number | null>();
+    rankable.forEach((result, index) => {
       const position =
         result.average !== null && result.average === previousAverage
           ? previousPosition
@@ -369,48 +416,63 @@ export function ExamResultsPage({
         previousAverage = result.average;
         previousPosition = position ?? index + 1;
       }
-      return { ...result, position };
+      rankedByPosition.set(result.student_id, position);
     });
+    return computed.map((result) => ({
+      ...result,
+      position: rankedByPosition.get(result.student_id) ?? null,
+    }));
   }, [exam?.has_practical, results, subjects]);
 
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return reportRows
-      .filter((row) => {
+    return sortStudentsForDisplay(
+      reportRows.filter((row) => {
         const matchesSearch = !query || (row.student?.full_name ?? "").toLowerCase().includes(query);
         const matchesDivision = divisionFilter === "All" || row.division === divisionFilter;
         const matchesSex = sexFilter === "All" || row.student?.sex === sexFilter;
         return matchesSearch && matchesDivision && matchesSex;
-      })
-      .sort((a, b) =>
-        (a.student?.sex ?? "M").localeCompare(b.student?.sex ?? "M") ||
-        (a.student?.full_name ?? "").localeCompare(b.student?.full_name ?? ""),
-      );
+      }),
+    );
   }, [divisionFilter, reportRows, search, sexFilter]);
 
-  const divisionSummary = useMemo(
-    () =>
-      DIVISIONS.map((division) => {
-        const students = reportRows.filter((row) => row.division === division);
-        return {
-          division,
-          girls: students.filter((row) => row.student?.sex === "F").length,
-          boys: students.filter((row) => row.student?.sex === "M").length,
-          total: students.length,
-        };
-      }),
+  const rankableRows = useMemo(
+    () => reportRows.filter((row) => row.division !== "INC" && row.division !== "ABS" && row.average !== null),
     [reportRows],
   );
 
+  const divisionSummary = useMemo(() => {
+    const summary = [...DIVISIONS, "INC", "ABS"].map((division) => {
+      const students = reportRows.filter((row) => row.division === division);
+      return {
+        division,
+        girls: students.filter((row) => row.student?.sex === "F").length,
+        boys: students.filter((row) => row.student?.sex === "M").length,
+        total: students.length,
+      };
+    });
+
+    const total = summary.reduce(
+      (acc, item) => ({
+        girls: acc.girls + item.girls,
+        boys: acc.boys + item.boys,
+        total: acc.total + item.total,
+      }),
+      { girls: 0, boys: 0, total: 0 },
+    );
+
+    return [...summary, { division: "TOTAL", girls: total.girls, boys: total.boys, total: total.total }];
+  }, [reportRows]);
+
   const averageStats = useMemo(() => {
-    const averages = reportRows
+    const averages = rankableRows
       .map((row) => row.average)
       .filter((value): value is number => value !== null);
     const average =
       averages.length > 0
         ? Math.round((averages.reduce((sum, value) => sum + value, 0) / averages.length) * 100) / 100
         : null;
-    const gpas = reportRows
+    const gpas = rankableRows
       .map((row) => row.gpa)
       .filter((value): value is number => value !== null && value !== undefined);
     const gpa =
@@ -418,7 +480,7 @@ export function ExamResultsPage({
         ? Math.round((gpas.reduce((sum, value) => sum + value, 0) / gpas.length) * 100) / 100
         : null;
     return { average, grade: average === null ? "—" : gradeFor(average), gpa };
-  }, [reportRows]);
+  }, [rankableRows]);
 
   const subjectPerformance = useMemo(() => {
     const summaries: SubjectPerformance[] = subjects.map((subject) => {
@@ -574,58 +636,23 @@ export function ExamResultsPage({
         .toUpperCase()
     : exam?.academic_year ?? "";
   const address = school?.address?.trim() ?? "";
+  const districtDisplay = "HALMASHAURI YA WILAYA YA IRAMBA";
   const postalBox = address.match(
-    /(?:p\.?\s*o\.?\s*box|s\.?\s*l\.?\s*p\.?)\s*[:#-]?\s*(.+)/i,
+    /(?:p\.?\s*o\.?\s*box|s\.?\s*l\.?\s*p\.?|s\.l\.p)\s*[:#-]?\s*(.+)/i,
   );
-  const addressLine = address
-    ? `P.O. Box ${postalBox?.[1]?.trim() ?? address}`
-    : "P.O. Box —";
+  const addressLine = address ? `S.L.P ${postalBox?.[1]?.trim() ?? "155"}` : "S.L.P 155";
 
   return (
-    <div
-      data-theme={darkMode ? "dark" : "light"}
-      className="exam-report mx-auto w-full min-w-0 max-w-[1600px] space-y-3 overflow-x-clip text-slate-900 dark:bg-slate-950 dark:text-slate-100"
-    >
+    <div className="exam-report mx-auto w-full min-w-0 max-w-[1600px] space-y-3 overflow-x-clip text-slate-900">
       <div className="report-no-print flex flex-wrap items-center justify-between gap-2">
         <Link
           href={examsHref}
-          className="inline-flex min-h-9 items-center gap-2 rounded px-1 text-sm font-semibold text-slate-700 hover:text-slate-950 dark:text-slate-300 dark:hover:text-white"
+          className="inline-flex min-h-9 items-center gap-2 rounded px-1 text-sm font-semibold text-slate-700 hover:text-slate-950"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Exams
         </Link>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setDarkMode((value) => !value)}
-            className="inline-flex min-h-9 items-center gap-2 rounded border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-          >
-            {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            {darkMode ? "Light" : "Dark"}
-          </button>
-        </div>
       </div>
-
-      <section className="report-no-print grid gap-2 rounded border border-slate-300 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 sm:grid-cols-3">
-        <label className="space-y-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-          Class
-          <select className={inputClass} value={classFilter} onChange={(event) => chooseClass(event.target.value)}>
-            {classOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-          </select>
-        </label>
-        <label className="space-y-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-          Year
-          <select className={inputClass} value={yearFilter} onChange={(event) => chooseYear(event.target.value)}>
-            {yearOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-          </select>
-        </label>
-        <label className="space-y-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-          Examination
-          <select className={inputClass} value={selectedExamId} onChange={(event) => chooseExam(event.target.value)}>
-            {availableExams.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.term}</option>)}
-          </select>
-        </label>
-      </section>
 
       {loading ? (
         <LoadingIndicator label="Loading results..." className="py-12" />
@@ -641,7 +668,7 @@ export function ExamResultsPage({
         <>
           <header className="report-heading rounded border border-slate-300 border-t-2 border-t-slate-900 bg-white px-4 py-3 text-center dark:border-slate-700 dark:border-t-slate-300 dark:bg-slate-900">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-slate-300 sm:text-xs">
-              COUNCIL / DISTRICT: {school.district || "—"}
+              {districtDisplay}
             </p>
             <h1 className="mt-0.5 text-lg font-extrabold uppercase tracking-wide sm:text-xl">{school.school_name}</h1>
             <p className="text-xs text-slate-700 dark:text-slate-300">{addressLine}</p>
@@ -649,17 +676,24 @@ export function ExamResultsPage({
             <p className="text-sm font-semibold">{exam.class_form}</p>
           </header>
 
-          <section className="report-division-layout min-w-0 space-y-2">
-            <div className="report-division-summary min-w-0 overflow-hidden rounded border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900">
-              <table className="report-division-table w-full table-fixed border-collapse text-center text-xs">
+          <section className="report-division-layout mx-auto w-full max-w-[540px] min-w-0 space-y-2">
+            <div className="report-division-summary w-full overflow-hidden rounded border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900">
+              <table className="report-division-table w-full table-fixed border-collapse text-center text-[10px] sm:text-xs">
                 <thead className="bg-slate-800 text-white dark:bg-slate-700">
-                  <tr><th className="w-[28%] px-2 py-1.5 text-left">DIV</th><th className="px-1 py-1.5">BOYS</th><th className="px-1 py-1.5">GIRLS</th><th className="px-1 py-1.5">TOTAL</th></tr>
+                  <tr>
+                    <th className="w-[24%] px-0.5 py-1 text-center">DIV</th>
+                    <th className="w-[25%] px-0.5 py-1 text-center">BOYS</th>
+                    <th className="w-[25%] px-0.5 py-1 text-center">GIRLS</th>
+                    <th className="w-[26%] px-0.5 py-1 text-center">TOTAL</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {divisionSummary.map((item) => (
                     <tr key={item.division} className="border-t border-slate-200 odd:bg-slate-50 dark:border-slate-700 dark:odd:bg-slate-800/70">
-                      <th className="px-3 py-1 text-left">{item.division.replace("DIV ", "")}</th>
-                      <td className="px-3 py-1">{item.boys}</td><td className="px-3 py-1">{item.girls}</td><td className="px-3 py-1 font-bold">{item.total}</td>
+                      <th className="px-0.5 py-0.5 text-center">{item.division === "TOTAL" ? "TOTAL" : item.division.replace("DIV ", "")}</th>
+                      <td className="px-0.5 py-0.5 text-center font-semibold">{item.boys}</td>
+                      <td className="px-0.5 py-0.5 text-center font-semibold">{item.girls}</td>
+                      <td className="px-0.5 py-0.5 text-center font-bold">{item.total}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -716,13 +750,13 @@ export function ExamResultsPage({
                 <tbody>
                   {filteredRows.map((row) => (
                     <tr key={row.student_id} className="border-t border-slate-200 odd:bg-slate-50 dark:border-slate-700 dark:odd:bg-slate-800/60">
-                      <td className="px-2 py-1 font-bold">{row.position ?? "—"}</td>
+                      <td className="px-2 py-1 font-bold">{row.position ?? (row.average === null ? "X" : "—")}</td>
                       <td className="break-words px-1 py-1 font-semibold sm:px-2">{row.student?.full_name ?? "Student"}</td>
                       <td className="px-1 py-1">{row.student?.sex ?? "—"}</td>
-                      <td className="px-1 py-1">{row.average === null ? "—" : row.average.toFixed(2)}</td>
-                      <td className="px-1 py-1 font-bold">{row.grade}</td>
+                      <td className="px-1 py-1">{row.average === null ? "X" : row.average.toFixed(2)}</td>
+                      <td className="px-1 py-1 font-bold">{row.grade === "—" ? "X" : row.grade}</td>
                       <td className="px-1 py-1">{row.points}</td>
-                      <td className="px-1 py-1 font-bold">{row.division.replace("DIV ", "")}</td>
+                      <td className="px-1 py-1 font-bold">{row.division === "ABS" ? "ABS" : row.division === "Incomplete" ? "INC" : row.division.replace("DIV ", "")}</td>
                       <td className="px-1 py-1 sm:px-2">
                         <div className="flex min-w-0 flex-wrap gap-x-2 gap-y-0.5">
                           {row.subject_breakdown.filter((subject) => !subject.missing).map((subject) => (
@@ -788,8 +822,8 @@ export function ExamResultsPage({
 
           <section className="report-summary-section space-y-2">
             <h2 className="border-b border-slate-300 pb-1 text-xs font-bold uppercase tracking-wide dark:border-slate-700">Subject Performance Summary</h2>
-            <div className="report-scroll hidden min-w-0 overflow-x-hidden rounded border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 2xl:block">
-              <table className="report-summary-table w-full table-fixed border-collapse text-center text-[9px] leading-3">
+            <div className="report-scroll hidden min-w-0 overflow-x-hidden rounded border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 lg:block">
+              <table className="report-summary-table w-full table-fixed border-collapse text-center text-[10px] leading-3 sm:text-[11px]">
                 <colgroup>
                   <col className="w-[3%]" />
                   <col className="w-[17%]" />
@@ -826,9 +860,9 @@ export function ExamResultsPage({
                   <tr>
                     {GRADES.map((grade) => (
                       <Fragment key={grade}>
-                        <th className="border-l border-slate-600 px-0.5 py-0.5 text-[8px] font-normal dark:border-slate-500">F</th>
-                        <th className="px-0.5 py-0.5 text-[8px] font-normal">M</th>
-                        <th className="px-0.5 py-0.5 text-[8px] font-normal">T</th>
+                        <th className="border-l border-slate-600 px-0.5 py-0.5 text-[9px] font-normal dark:border-slate-500">F</th>
+                        <th className="px-0.5 py-0.5 text-[9px] font-normal">M</th>
+                        <th className="px-0.5 py-0.5 text-[9px] font-normal">T</th>
                       </Fragment>
                     ))}
                   </tr>
@@ -858,7 +892,7 @@ export function ExamResultsPage({
                 </tbody>
               </table>
             </div>
-            <div className="report-subject-cards grid min-w-0 gap-2 2xl:hidden">
+            <div className="report-subject-cards grid min-w-0 gap-2 lg:hidden">
               {subjectPerformance.map((item, index) => (
                 <article key={item.subject.id} className="min-w-0 rounded border border-slate-300 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
                   <div className="flex min-w-0 items-start justify-between gap-2 border-b border-slate-200 pb-1.5 dark:border-slate-700">
@@ -894,9 +928,6 @@ export function ExamResultsPage({
                 </p>
               )}
             </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              GPA is the average grade point per subject (A=1, B=2, C=3, D=4, F=5; lower is better). REMARKS follow the subject grade.
-            </p>
           </section>
         </>
       )}

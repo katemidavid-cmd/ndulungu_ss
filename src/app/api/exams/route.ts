@@ -43,11 +43,7 @@ export async function GET(request: Request) {
       ? admin.from('exams').select('id', { count: "exact", head: true })
       : admin.from('exams').select('*', { count: "exact" });
     if (profile.role === 'teacher') {
-      if (status === 'Active' || status === 'Processed') {
-        query = query.eq('status', status);
-      } else {
-        query = query.in('status', ['Active', 'Processed']);
-      }
+      query = query.eq('status', 'Active');
     } else if (status) {
       query = query.eq('status', status);
     }
@@ -66,17 +62,21 @@ export async function GET(request: Request) {
       .from("exams")
       .select("id", { count: "exact", head: true });
     if (profile.role === "teacher") {
-      query = query.in("status", ["Active", "Processed"]);
+      query = query.eq("status", "Active");
     }
     if (yearFilter) query = query.eq("academic_year", yearFilter);
     return query;
   };
 
   const buildYearsQuery = () => {
-    return admin
+    let query = admin
       .from("exams")
       .select("academic_year")
       .order("academic_year", { ascending: false });
+    if (profile.role === "teacher") {
+      query = query.eq("status", "Active");
+    }
+    return query;
   };
 
   const [
@@ -112,7 +112,7 @@ export async function GET(request: Request) {
     Processed: 0,
   };
   const statusesToCount =
-    profile.role === "teacher" ? ["Active", "Processed"] : Object.keys(statusCounts);
+    profile.role === "teacher" ? ["Active"] : Object.keys(statusCounts);
   await Promise.all(
     statusesToCount.map(async (examStatus) => {
       let query = admin

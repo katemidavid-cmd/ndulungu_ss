@@ -152,12 +152,15 @@ export default async function HeadmasterDashboard() {
     }
   }
 
-  const divisionCounts = DIVISIONS.map((division) => ({
+  const divisionCounts = [...DIVISIONS, "INC", "ABS"].map((division) => ({
     division,
     count: latestResults.filter((result) => result.division === division).length,
   }));
   const completedResults = latestResults.filter(
-    (result) => result.division !== "Incomplete",
+    (result) =>
+      result.division !== "Incomplete" &&
+      result.division !== "INC" &&
+      result.division !== "ABS",
   ).length;
   const incompleteResults = latestResults.length - completedResults;
   const averages = latestResults

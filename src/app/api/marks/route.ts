@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sortStudentsForDisplay } from "@/lib/student-sort";
 
 type MarkInput = {
   exam_id?: unknown;
@@ -312,7 +313,7 @@ export async function GET(request: Request) {
 
       const [listResult, overallResult] = await Promise.all([
         listQuery
-          .order("sex", { ascending: false })
+          .order("sex")
           .order("full_name")
           .order("id")
           .range(from, from + pageSize - 1),
@@ -327,7 +328,7 @@ export async function GET(request: Request) {
           { status: 500 },
         );
       }
-      students = (listResult.data ?? []) as StudentRow[];
+      students = sortStudentsForDisplay((listResult.data ?? []) as StudentRow[]);
       total = listResult.count ?? 0;
       overallTotal = overallResult.count ?? 0;
     } else {
@@ -347,7 +348,7 @@ export async function GET(request: Request) {
 
       const [listResult, overallResult] = await Promise.all([
         listQuery
-          .order("sex", { ascending: false, referencedTable: "students" })
+          .order("sex", { referencedTable: "students" })
           .order("full_name", { referencedTable: "students" })
           .order("student_id")
           .range(from, from + pageSize - 1),
@@ -367,14 +368,16 @@ export async function GET(request: Request) {
         );
       }
 
-      students = (listResult.data ?? []).flatMap((row) => {
-        const embedded = row.students as unknown as
-          | StudentRow
-          | StudentRow[]
-          | null;
-        if (!embedded) return [];
-        return [Array.isArray(embedded) ? embedded[0] : embedded];
-      });
+      students = sortStudentsForDisplay(
+        (listResult.data ?? []).flatMap((row) => {
+          const embedded = row.students as unknown as
+            | StudentRow
+            | StudentRow[]
+            | null;
+          if (!embedded) return [];
+          return [Array.isArray(embedded) ? embedded[0] : embedded];
+        }),
+      );
       total = listResult.count ?? 0;
       overallTotal = overallResult.count ?? 0;
     }

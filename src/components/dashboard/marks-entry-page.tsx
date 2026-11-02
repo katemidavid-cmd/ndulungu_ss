@@ -357,20 +357,6 @@ export function MarksEntryPage({ dashboardBase }: { dashboardBase: string }) {
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6">
-      <header className="rounded-3xl bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-800 p-5 text-white shadow-lg sm:p-7">
-        <div className="flex items-center gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10">
-            <ClipboardList className="h-5 w-5" />
-          </span>
-          <div>
-            <h2 className="text-xl font-bold sm:text-2xl">Enter Examination Marks</h2>
-            <p className="mt-1 text-sm text-blue-100">
-              Enter theory marks out of 100. Practical marks are available only when enabled for both the examination and subject.
-            </p>
-          </div>
-        </div>
-      </header>
-
       <section className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 sm:p-5">
         <label className="space-y-1.5 text-sm font-semibold text-slate-700">
           Active examination
@@ -416,14 +402,6 @@ export function MarksEntryPage({ dashboardBase }: { dashboardBase: string }) {
             <span className="rounded-full bg-indigo-50 px-3 py-1.5 font-semibold text-indigo-800">
               {exam.class_form} · {exam.academic_year} · {exam.term}
             </span>
-            <span className="rounded-full bg-blue-50 px-3 py-1.5 font-semibold text-blue-800">
-              Theory /100
-            </span>
-            {subjectHasPractical && (
-              <span className="rounded-full bg-emerald-50 px-3 py-1.5 font-semibold text-emerald-800">
-                Practical /50
-              </span>
-            )}
             <span className="rounded-full bg-emerald-50 px-3 py-1.5 font-semibold text-emerald-800">
               Mark entry open until results are processed
             </span>

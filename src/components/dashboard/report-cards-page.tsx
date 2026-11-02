@@ -8,6 +8,7 @@ import {
   SignatureManager,
 } from "@/components/dashboard/report-card-signatures";
 import { notify } from "@/lib/notifications";
+import { sortStudentsForDisplay } from "@/lib/student-sort";
 import { commentForAverage } from "@/lib/report-card-comments";
 import type { SchoolSignatures } from "@/lib/report-card-signatures";
 
@@ -445,11 +446,7 @@ export function ReportCardsPage() {
     [classFilter, exams, yearFilter],
   );
   const studentOptions = useMemo(
-    () =>
-      [...(data?.students ?? [])].sort((a, b) =>
-        a.sex.localeCompare(b.sex) ||
-        a.full_name.localeCompare(b.full_name, "sw"),
-      ),
+    () => sortStudentsForDisplay(data?.students ?? []),
     [data],
   );
   const selectedExamResults = useMemo(
@@ -462,14 +459,11 @@ export function ReportCardsPage() {
   );
   const cards = useMemo(() => {
     if (!data) return [];
-    return data.students
-      .filter((student) => studentFilter === "all" || student.id === studentFilter)
-      .sort((a, b) => {
-        return (
-          a.sex.localeCompare(b.sex) ||
-          a.full_name.localeCompare(b.full_name, "sw")
-        );
-      });
+    return sortStudentsForDisplay(
+      data.students.filter(
+        (student) => studentFilter === "all" || student.id === studentFilter,
+      ),
+    );
   }, [data, studentFilter]);
 
   function selectExam(nextExamId: string) {

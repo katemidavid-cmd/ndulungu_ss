@@ -1,10 +1,9 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
+import { AcademicPeriodBanner } from "@/components/dashboard/academic-period-banner";
 import { createClient } from "@/lib/supabase/server";
 import { connection } from "next/server";
 import { redirect } from "next/navigation";
-import { CalendarDays } from "lucide-react";
-import Link from "next/link";
 
 export const instant = false;
 
@@ -79,41 +78,12 @@ export default async function DashboardLayout({
             role: role,
           }}
         />
-        <div className="px-4 pt-4 sm:px-6">
-          <div
-            className={`flex flex-col gap-3 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${
-              academicPeriod && !academicPeriodError
-                ? "border-indigo-200 bg-indigo-50 text-indigo-950"
-                : "border-amber-200 bg-amber-50 text-amber-950"
-            }`}
-          >
-            <div className="flex items-start gap-3">
-              <CalendarDays className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700" />
-              <div>
-                <p className="text-sm font-semibold">Active Academic Period</p>
-                {academicPeriod && !academicPeriodError ? (
-                  <p className="mt-0.5 text-sm">
-                    Academic Year {academicPeriod.academic_year} · {academicPeriod.term}
-                  </p>
-                ) : (
-                  <p className="mt-0.5 text-sm">
-                    {academicPeriodError
-                      ? "Academic period setup is unavailable. Apply the exam-management database migration."
-                      : "No active year or term is set. Configure it before creating exams."}
-                  </p>
-                )}
-              </div>
-            </div>
-            {(role === "headmaster" || role === "academic") && (
-              <Link
-                href={academicSettingsHref}
-                className="inline-flex min-h-9 shrink-0 items-center justify-center rounded-lg border border-indigo-300 bg-white px-3 text-sm font-semibold text-indigo-800 hover:bg-indigo-100"
-              >
-                Set academic period
-              </Link>
-            )}
-          </div>
-        </div>
+        <AcademicPeriodBanner
+          role={role}
+          academicPeriod={academicPeriod ?? null}
+          academicPeriodError={academicPeriodError ?? null}
+          academicSettingsHref={academicSettingsHref}
+        />
         <main className="overflow-x-hidden p-4 sm:p-6">{children}</main>
       </div>
     </div>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sortStudentsForDisplay } from "@/lib/student-sort";
 
 const MAX_PAGE_SIZE = 100;
 const DEFAULT_PAGE_SIZE = 20;
@@ -94,7 +95,7 @@ export async function GET(request: Request) {
   }
 
   studentsQuery = studentsQuery
-    .order("sex", { ascending: false })
+    .order("sex")
     .order("full_name")
     .order("id");
   const { data: students, count, error: studentsError } = await studentsQuery.range(
@@ -141,7 +142,7 @@ export async function GET(request: Request) {
 
   const total = count ?? 0;
   return NextResponse.json({
-    students: students ?? [],
+    students: sortStudentsForDisplay(students ?? []),
     total,
     page,
     pageSize,

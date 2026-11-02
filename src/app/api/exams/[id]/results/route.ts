@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sortStudentsForDisplay } from "@/lib/student-sort";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -118,6 +119,13 @@ export async function GET(_request: Request, { params }: RouteContext) {
   const studentsById = new Map(
     (students ?? []).map((student) => [student.id, student]),
   );
+  const orderedResults = sortStudentsForDisplay(
+    (results ?? []).map((result) => ({
+      ...result,
+      student: studentsById.get(result.student_id) ?? null,
+    })),
+  );
+
   return NextResponse.json({
     exam,
     school: school ?? {
@@ -126,22 +134,6 @@ export async function GET(_request: Request, { params }: RouteContext) {
       address: "",
     },
     subjects,
-    results: (results ?? [])
-      .map((result) => ({
-        ...result,
-        student: studentsById.get(result.student_id) ?? null,
-      }))
-      .sort((a, b) => {
-        const sexOrder = (a.student?.sex ?? "M").localeCompare(
-          b.student?.sex ?? "M",
-        );
-        return (
-          sexOrder ||
-          (a.student?.full_name ?? "").localeCompare(
-            b.student?.full_name ?? "",
-          ) ||
-          a.student_id.localeCompare(b.student_id)
-        );
-      }),
+    results: orderedResults,
   });
 }

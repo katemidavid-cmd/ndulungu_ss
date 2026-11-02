@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizeSignatureLayout } from "@/lib/report-card-signatures";
+import { sortStudentsForDisplay } from "@/lib/student-sort";
 
 type SubjectBreakdownEntry = {
   subject_id: string;
@@ -124,7 +125,7 @@ export async function GET(request: Request) {
           .from("students")
           .select("id, full_name, sex, class_id")
           .in("id", studentIds)
-          .order("sex", { ascending: false })
+          .order("sex")
           .order("full_name")
       : Promise.resolve({ data: [], error: null }),
     admin.from("subjects").select("id, name, subject_code").order("name"),
@@ -177,16 +178,18 @@ export async function GET(request: Request) {
   const classesById = new Map(
     (classes ?? []).map((schoolClass) => [schoolClass.id, schoolClass]),
   );
-  const students = (studentRows ?? []).map((student) => {
-    const schoolClass = classesById.get(student.class_id);
-    return {
-      id: student.id,
-      full_name: student.full_name,
-      sex: student.sex,
-      form: exam.class_form,
-      stream: schoolClass?.stream ?? null,
-    };
-  });
+  const students = sortStudentsForDisplay(
+    (studentRows ?? []).map((student) => {
+      const schoolClass = classesById.get(student.class_id);
+      return {
+        id: student.id,
+        full_name: student.full_name,
+        sex: student.sex,
+        form: exam.class_form,
+        stream: schoolClass?.stream ?? null,
+      };
+    }),
+  );
 
   const schoolRow = school as Record<string, unknown> | null;
 
