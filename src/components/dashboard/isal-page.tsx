@@ -40,7 +40,7 @@ async function getEligibleStudents(
   if (classesError) throw new Error(classesError.message);
 
   const classIds = (schoolClasses ?? []).map((schoolClass) => schoolClass.id);
-  if (classIds.length === 0) return [] as Array<{ id: string; full_name: string; sex?: string | null }>;
+  if (classIds.length === 0) return [];
 
   const { data: students, error: studentsError } = await admin
     .from("students")

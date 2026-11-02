@@ -4,11 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 export default async function DashboardRoot() {
   const supabase = await createClient();
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  const user = session?.user ?? null;
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
 
-  if (!user) redirect("/login");
+  if (error || !user) redirect("/login");
 
   const { data: profile } = await supabase
     .from("profiles")

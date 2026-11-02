@@ -30,17 +30,19 @@ export default function ResetPasswordPage() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
+    } = supabase.auth.onAuthStateChange((event) => {
       if (!active) return;
-      if (session || event === "PASSWORD_RECOVERY") {
+      if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
         setHasSession(true);
         setChecking(false);
       }
     });
 
-    void supabase.auth.getSession().then(({ data }) => {
+    void supabase.auth.getUser().then(({ data, error }) => {
       if (!active) return;
-      if (data.session) setHasSession(true);
+      if (!error && data.user) {
+        setHasSession(true);
+      }
       setChecking(false);
     });
 
