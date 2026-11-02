@@ -573,10 +573,10 @@ export function ExamResultsPage({
   function reportFileBaseName() {
     return (
       safeFileName(
-        [exam?.name, exam?.class_form, exam?.academic_year]
+        ["Examination Results", exam?.name, exam?.class_form, exam?.academic_year]
           .filter(Boolean)
           .join(" - "),
-      ) || "Results Report"
+      ) || "Examination Results"
     );
   }
 
@@ -636,11 +636,11 @@ export function ExamResultsPage({
         .toUpperCase()
     : exam?.academic_year ?? "";
   const address = school?.address?.trim() ?? "";
-  const districtDisplay = "HALMASHAURI YA WILAYA YA IRAMBA";
+  const districtDisplay = "IRAMBA DISTRICT COUNCIL";
   const postalBox = address.match(
     /(?:p\.?\s*o\.?\s*box|s\.?\s*l\.?\s*p\.?|s\.l\.p)\s*[:#-]?\s*(.+)/i,
   );
-  const addressLine = address ? `S.L.P ${postalBox?.[1]?.trim() ?? "155"}` : "S.L.P 155";
+  const addressLine = address ? `P.O. Box ${postalBox?.[1]?.trim() ?? "155"}` : "P.O. Box 155";
 
   return (
     <div className="exam-report mx-auto w-full min-w-0 max-w-[1600px] space-y-3 overflow-x-clip text-slate-900">
@@ -666,20 +666,31 @@ export function ExamResultsPage({
         </div>
       ) : (
         <>
-          <header className="report-heading rounded border border-slate-300 border-t-2 border-t-slate-900 bg-white px-4 py-3 text-center dark:border-slate-700 dark:border-t-slate-300 dark:bg-slate-900">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-slate-300 sm:text-xs">
+          <header className="report-heading overflow-hidden rounded-lg border border-slate-300 bg-white px-4 py-3 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:px-6">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-600 dark:text-slate-300 sm:text-xs">
               {districtDisplay}
             </p>
-            <h1 className="mt-0.5 text-lg font-extrabold uppercase tracking-wide sm:text-xl">{school.school_name}</h1>
-            <p className="text-xs text-slate-700 dark:text-slate-300">{addressLine}</p>
-            <p className="mt-1 text-sm font-bold uppercase">{exam.name} — {reportDate}</p>
-            <p className="text-sm font-semibold">{exam.class_form}</p>
+            <h1 className="mt-1 text-xl font-black uppercase leading-tight tracking-wide text-slate-950 dark:text-white sm:text-2xl">
+              {school.school_name}
+            </h1>
+            <p className="mt-0.5 text-xs font-medium text-slate-600 dark:text-slate-400">
+              {addressLine}
+            </p>
+            <div className="report-heading-title mx-auto mt-2 w-full max-w-md border-t border-slate-300 pt-2 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500 dark:border-slate-600 dark:text-slate-400">
+              Examination Results
+            </div>
+            <p className="mt-1 text-sm font-bold uppercase tracking-wide text-slate-900 dark:text-slate-100">
+              {exam.name} — {reportDate}
+            </p>
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+              {exam.class_form}
+            </p>
           </header>
 
           <section className="report-division-layout mx-auto w-full max-w-[540px] min-w-0 space-y-2">
             <div className="report-division-summary w-full overflow-hidden rounded border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900">
               <table className="report-division-table w-full table-fixed border-collapse text-center text-[10px] sm:text-xs">
-                <thead className="bg-slate-800 text-white dark:bg-slate-700">
+                <thead className="bg-slate-900 text-white dark:bg-slate-700">
                   <tr>
                     <th className="w-[24%] px-0.5 py-1 text-center">DIV</th>
                     <th className="w-[25%] px-0.5 py-1 text-center">BOYS</th>
@@ -706,7 +717,7 @@ export function ExamResultsPage({
                 ["STUDENTS", String(reportRows.length)],
                 ["SCHOOL GPA", averageStats.gpa === null ? "—" : averageStats.gpa.toFixed(2)],
               ].map(([label, value]) => (
-                <div key={label} className="min-w-0 rounded border border-slate-300 border-l-2 border-l-slate-800 bg-white px-3 py-2 dark:border-slate-700 dark:border-l-slate-400 dark:bg-slate-900">
+                <div key={label} className="min-w-0 rounded border border-slate-300 border-l-2 border-l-slate-900 bg-white px-3 py-2 shadow-sm dark:border-slate-700 dark:border-l-slate-400 dark:bg-slate-900">
                   <p className="break-words text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</p>
                   <p className="mt-0.5 break-words text-base font-bold text-slate-950 dark:text-white">{value}</p>
                 </div>
@@ -740,7 +751,7 @@ export function ExamResultsPage({
                   <col className="w-[7%]" />
                   <col className="w-[43%]" />
                 </colgroup>
-                <thead className="sticky top-0 z-10 bg-slate-800 text-white dark:bg-slate-700">
+                <thead className="sticky top-0 z-10 bg-slate-900 text-white dark:bg-slate-700">
                   <tr>
                     {["#", "STUDENT NAME", "SEX", "AVG", "GRADE", "PTS", "DIV", "SUBJECTS (GRADES)"].map((label) => (
                       <th key={label} className="break-words px-1 py-1.5 font-bold uppercase sm:px-2">{label}</th>
@@ -842,7 +853,7 @@ export function ExamResultsPage({
                   <col className="w-[4%]" />
                   <col className="w-[11.5%]" />
                 </colgroup>
-                <thead className="sticky top-0 z-10 bg-slate-800 text-white dark:bg-slate-700">
+                <thead className="sticky top-0 z-10 bg-slate-900 text-white dark:bg-slate-700">
                   <tr>
                     <th rowSpan={2} className="px-0.5 py-1">#</th>
                     <th rowSpan={2} className="px-1 py-1 text-left">SUBJECT</th>

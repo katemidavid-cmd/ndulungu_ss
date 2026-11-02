@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Download, Moon, PenLine, Printer, Sun } from "lucide-react";
+import { ChevronDown, Download, Moon, PenLine, Printer, Sun } from "lucide-react";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
 import {
   ReportCardSignatures,
@@ -163,8 +163,41 @@ const SWAHILI_SHORT_MONTHS = [
   "Nov",
   "Des",
 ];
-const inputClass =
-  "min-h-9 w-full rounded border border-slate-300 bg-white px-2.5 text-base text-slate-800 outline-none focus:border-slate-600 focus:ring-2 focus:ring-slate-400/20 sm:text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100";
+const selectClass =
+  "h-10 w-full appearance-none truncate rounded-lg border border-slate-200 bg-slate-50 pl-3 pr-9 text-sm font-medium text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-blue-400";
+
+function SelectField({
+  label,
+  value,
+  onChange,
+  disabled,
+  children,
+}: {
+  label: string;
+  value: string | number;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="min-w-0">
+      <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+        {label}
+      </span>
+      <span className="relative block">
+        <select
+          className={selectClass}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          disabled={disabled}
+        >
+          {children}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+      </span>
+    </label>
+  );
+}
 
 function gradeFor(mark: number) {
   if (mark >= 75) return "A";
@@ -511,7 +544,7 @@ export function ReportCardsPage() {
   function printReport() {
     if (!data) return;
     document.title = safeFileName(
-      `Ripoti - ${data.exam.name} - ${data.exam.class_form} - ${data.exam.academic_year}`,
+      `Results - ${data.exam.name} - ${data.exam.class_form} - ${data.exam.academic_year}`,
     );
     window.print();
   }
@@ -521,7 +554,7 @@ export function ReportCardsPage() {
     const rows: (string | number)[][] = [
       [data.school.school_name],
       [`HALMASHAURI YA WILAYA YA ${data.school.district || data.school.region || "—"}`],
-      [`RIPOTI YA MATOKEO — ${data.exam.name} ${data.exam.academic_year}`],
+      [`RESULTS REPORT — ${data.exam.name} ${data.exam.academic_year}`],
       [`Darasa: ${data.exam.class_form}`, `Tarehe: ${reportDate || "—"}`],
       [],
       [
@@ -584,7 +617,7 @@ export function ReportCardsPage() {
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = `${safeFileName(
-      `Ripoti ya Matokeo - ${data.exam.name} - ${data.exam.class_form} - ${data.exam.academic_year}`,
+      `Results Report - ${data.exam.name} - ${data.exam.class_form} - ${data.exam.academic_year}`,
     )}.csv`;
     anchor.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -596,31 +629,35 @@ export function ReportCardsPage() {
       data-theme={darkMode ? "dark" : "light"}
       className="exam-report report-card-page mx-auto w-full min-w-0 max-w-[210mm] space-y-4 text-slate-900 dark:text-slate-100"
     >
-      <div className="report-no-print flex flex-col gap-3 print:hidden">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h1 className="text-xl font-bold">Ripoti ya Matokeo</h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Report cards · one A4 page per student
-            </p>
+      <div className="report-no-print print:hidden">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-4 py-4 dark:border-slate-800 sm:px-5">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-600 dark:text-blue-400">
+                Report Cards
+              </p>
+              <h1 className="mt-1 text-xl font-black tracking-tight text-slate-900 dark:text-white sm:text-2xl">
+                Results Report
+              </h1>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                One A4 page per student · choose class, exam and student to preview
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDarkMode((value) => !value)}
+              className="inline-flex h-9 shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+            >
+              {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              {darkMode ? "Light" : "Dark"}
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setDarkMode((value) => !value)}
-            className="inline-flex min-h-9 items-center gap-2 rounded border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-          >
-            {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            {darkMode ? "Light" : "Dark"}
-          </button>
-        </div>
 
-        <div className="grid gap-2 rounded border border-slate-300 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 sm:grid-cols-2 lg:grid-cols-5">
-          <label className="space-y-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-            Class
-            <select
-              className={inputClass}
+          <div className="grid gap-3 px-4 py-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-5">
+            <SelectField
+              label="Class"
               value={classFilter}
-              onChange={(event) => chooseClass(event.target.value)}
+              onChange={chooseClass}
               disabled={loadingExams}
             >
               {classOptions.map((item) => (
@@ -628,14 +665,12 @@ export function ReportCardsPage() {
                   {item}
                 </option>
               ))}
-            </select>
-          </label>
-          <label className="space-y-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-            Exam
-            <select
-              className={inputClass}
+            </SelectField>
+
+            <SelectField
+              label="Exam"
               value={selectedExamId}
-              onChange={(event) => chooseExam(event.target.value)}
+              onChange={chooseExam}
               disabled={loadingExams}
             >
               {examOptions.map((item) => (
@@ -643,14 +678,12 @@ export function ReportCardsPage() {
                   {item.name} · {item.term}
                 </option>
               ))}
-            </select>
-          </label>
-          <label className="space-y-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-            Year
-            <select
-              className={inputClass}
+            </SelectField>
+
+            <SelectField
+              label="Year"
               value={yearFilter}
-              onChange={(event) => chooseYear(event.target.value)}
+              onChange={chooseYear}
               disabled={loadingExams}
             >
               {yearOptions.map((item) => (
@@ -658,14 +691,12 @@ export function ReportCardsPage() {
                   {item}
                 </option>
               ))}
-            </select>
-          </label>
-          <label className="space-y-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-            Student
-            <select
-              className={inputClass}
+            </SelectField>
+
+            <SelectField
+              label="Student"
               value={studentFilter}
-              onChange={(event) => setStudentFilter(event.target.value)}
+              onChange={setStudentFilter}
               disabled={!data || loadingReport}
             >
               <option value="all">All students</option>
@@ -674,15 +705,13 @@ export function ReportCardsPage() {
                   {student.full_name}
                 </option>
               ))}
-            </select>
-          </label>
-          <label className="space-y-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-            Previous exams to show
-            <select
-              className={inputClass}
+            </SelectField>
+
+            <SelectField
+              label="Previous exams"
               value={previousCount}
-              onChange={(event) =>
-                setPreviousCount(Math.min(3, Math.max(0, Number(event.target.value))))
+              onChange={(value) =>
+                setPreviousCount(Math.min(3, Math.max(0, Number(value))))
               }
             >
               {[0, 1, 2, 3].map((value) => (
@@ -690,42 +719,42 @@ export function ReportCardsPage() {
                   {value}
                 </option>
               ))}
-            </select>
-          </label>
-        </div>
+            </SelectField>
+          </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={printReport}
-            disabled={!data || loadingReport || cards.length === 0}
-            className="inline-flex min-h-9 items-center gap-2 rounded bg-slate-800 px-3 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-50"
-          >
-            <Printer className="h-4 w-4" />
-            Print / PDF
-          </button>
-          <button
-            type="button"
-            onClick={exportExcel}
-            disabled={!data || loadingReport || cards.length === 0}
-            className="inline-flex min-h-9 items-center gap-2 rounded border border-slate-400 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-          >
-            <Download className="h-4 w-4" />
-            Export Excel
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowSignatureManager((value) => !value)}
-            disabled={!data || loadingReport}
-            className="inline-flex min-h-9 items-center gap-2 rounded border border-emerald-500 bg-white px-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-600 dark:bg-slate-800 dark:text-emerald-300 dark:hover:bg-emerald-950"
-            aria-expanded={showSignatureManager}
-          >
-            <PenLine className="h-4 w-4" />
-            Saini na Muhuri
-          </button>
-          <span className="text-xs text-slate-500 dark:text-slate-400">
-            {data && !loadingReport ? `${cards.length} report card(s)` : ""}
-          </span>
+          <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50/70 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70 sm:px-5">
+            <button
+              type="button"
+              onClick={printReport}
+              disabled={!data || loadingReport || cards.length === 0}
+              className="inline-flex h-10 items-center gap-2 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Printer className="h-4 w-4" />
+              Print / PDF
+            </button>
+            <button
+              type="button"
+              onClick={exportExcel}
+              disabled={!data || loadingReport || cards.length === 0}
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              <Download className="h-4 w-4" />
+              Export Excel
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowSignatureManager((value) => !value)}
+              disabled={!data || loadingReport}
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-emerald-300 bg-white px-4 text-sm font-semibold text-emerald-700 shadow-sm transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-700 dark:bg-slate-800 dark:text-emerald-300 dark:hover:bg-emerald-950"
+              aria-expanded={showSignatureManager}
+            >
+              <PenLine className="h-4 w-4" />
+              Saini na Muhuri
+            </button>
+            <span className="ml-auto text-xs font-medium text-slate-500 dark:text-slate-400">
+              {data && !loadingReport ? `${cards.length} report card(s)` : ""}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -819,7 +848,7 @@ function ReportCard({
           {postalLine(school.address)}
         </p>
           <p className="report-card-exam-title mt-1 text-[12px] font-bold uppercase">
-          RIPOTI YA MATOKEO — {exam.name} {exam.academic_year}
+          RESULTS REPORT — {exam.name} {exam.academic_year}
         </p>
       </header>
 

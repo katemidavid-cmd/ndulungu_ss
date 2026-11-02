@@ -71,6 +71,11 @@ input[type="reset"]:enabled,
     margin: 8mm 9mm;
   }
 
+  @page isal-a4 {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
   html,
   body {
     width: 100%;
@@ -89,8 +94,20 @@ input[type="reset"]:enabled,
   }
 
   .exam-report,
-  .exam-report * {
+  .exam-report *,
+  .isal-print-shell,
+  .isal-print-shell * {
     visibility: visible !important;
+  }
+
+  .isal-print-shell {
+    page: isal-a4;
+    position: static !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
   }
 
   .exam-report {
@@ -149,6 +166,16 @@ input[type="reset"]:enabled,
     margin-top: 3pt !important;
     font-size: 11pt !important;
     font-weight: 700 !important;
+  }
+
+  .exam-report .report-heading-title {
+    margin: 3pt auto 0 !important;
+    padding-top: 3pt !important;
+    border-top: 0.5pt solid #000000 !important;
+    font-size: 9.5pt !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.4pt !important;
+    text-transform: uppercase !important;
   }
 
   .exam-report .report-heading h1 {
@@ -304,12 +331,14 @@ input[type="reset"]:enabled,
   }
 
   @supports selector(:has(*)) {
-    body *:not(.exam-report):not(:has(.exam-report)):not(.exam-report *) {
+    body *:not(.exam-report):not(.isal-print-shell):not(:has(.exam-report)):not(:has(.isal-print-shell)):not(.exam-report *):not(.isal-print-shell *) {
       display: none !important;
     }
 
     body:has(.exam-report),
-    body *:has(.exam-report) {
+    body *:has(.exam-report),
+    body:has(.isal-print-shell),
+    body *:has(.isal-print-shell) {
       display: block !important;
       float: none !important;
       width: auto !important;

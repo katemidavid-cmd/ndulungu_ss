@@ -26,6 +26,14 @@ type SubjectRecord = {
   subject_code?: string | null;
 };
 
+const escapeHtml = (value: string | number | null | undefined) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
 export function ISALDocument({
   exam,
   subject,
@@ -52,107 +60,143 @@ export function ISALDocument({
   ).length;
 
   const handlePrint = () => {
-    const printWindow = window.open("", "_blank", "noopener,noreferrer");
-    if (!printWindow) return;
+    const previousFrame = document.getElementById("isal-print-frame");
+    if (previousFrame) previousFrame.remove();
 
-    const rows = sortedStudents
-      .map(
-        (student, index) => `
-          <tr>
-            <td>${index + 1}</td>
-            <td>${(student.full_name ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</td>
-            <td>${(student.sex ?? "—").toUpperCase()}</td>
-            <td><span class="signature-box" aria-label="Student signature"></span></td>
-            <td><span class="signature-box" aria-label="Student marks"></span></td>
-          </tr>
-        `,
-      )
-      .join("");
+    const rows = sortedStudents.length
+      ? sortedStudents
+          .map(
+            (student, index) => `
+              <tr>
+                <td class="cell-center">${index + 1}</td>
+                <td class="cell-name">${escapeHtml(student.full_name)}</td>
+                <td class="cell-center">${escapeHtml((student.sex || "—").toUpperCase())}</td>
+                <td class="cell-center"></td>
+                <td class="cell-center"></td>
+              </tr>
+            `,
+          )
+          .join("")
+      : `<tr><td class="empty" colspan="5">No students are registered for this subject in this class.</td></tr>`;
 
     const printHtml = `
       <!doctype html>
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>${(exam.name ?? "ISAL").replace(/</g, "&lt;")}</title>
+          <title>${escapeHtml(exam.name ?? "ISAL")}</title>
           <style>
             @page { size: A4 portrait; margin: 12mm; }
+            * { box-sizing: border-box; }
             html, body {
               margin: 0;
               padding: 0;
               background: #fff;
               color: #000;
               font-family: Arial, Helvetica, sans-serif;
+              font-size: 12pt;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
             }
-            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            .doc {
-              width: 100%;
-              box-sizing: border-box;
-              padding: 0;
-              background: #fff;
-            }
+            .doc { width: 100%; }
             .header {
               text-align: center;
-              border-bottom: 1px solid #000;
-              padding-bottom: 12px;
-              margin-bottom: 12px;
+              border-bottom: 1.5pt solid #000;
+              padding-bottom: 8px;
+              margin-bottom: 8px;
             }
-            .school { font-size: 11px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; }
-            h1 { margin: 8px 0 4px; font-size: 22px; text-transform: uppercase; }
-            .meta { font-size: 12px; }
-            .summary { text-align: right; font-size: 11px; font-weight: 700; text-transform: uppercase; margin: 8px 0; }
+            .school {
+              font-size: 12pt;
+              font-weight: 700;
+              letter-spacing: 0.16em;
+              text-transform: uppercase;
+            }
+            h1 {
+              margin: 6px 0 4px;
+              font-size: 18pt;
+              line-height: 1.2;
+              text-transform: uppercase;
+            }
+            .meta { font-size: 12pt; line-height: 1.35; }
+            .summary {
+              margin: 6px 0;
+              text-align: right;
+              font-size: 12pt;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.04em;
+            }
             table {
               width: 100%;
               border-collapse: collapse;
               table-layout: fixed;
-              border: 1px solid #000;
+              border: 1pt solid #000;
             }
+            col.sn-col { width: 8%; }
+            col.name-col { width: 34%; }
+            col.gender-col { width: 10%; }
+            col.signature-col { width: 24%; }
+            col.marks-col { width: 24%; }
+            thead { display: table-header-group; }
             th, td {
-              border: 1px solid #000;
-              padding: 6px 4px;
+              border: 0.75pt solid #000;
+              padding: 4px;
+              font-size: 12pt;
+              line-height: 1.25;
+              vertical-align: middle;
+            }
+            thead th {
+              background: #eef0f3;
               text-align: center;
-              vertical-align: top;
-              font-size: 11px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.02em;
             }
-            th { background: #f3f4f6; }
-            th:nth-child(2), td:nth-child(2) { text-align: left; }
-            .name-col { width: 38%; }
-            .sn-col { width: 8%; }
-            .gender-col { width: 12%; }
-            .signature-col { width: 22%; }
-            .marks-col { width: 20%; }
-            tbody tr { break-inside: avoid; page-break-inside: avoid; }
-            .signature-box {
-              display: block;
-              width: 100%;
-              min-height: 10mm;
-              border-bottom: 1px solid #000;
-              box-sizing: border-box;
+            .cell-center { text-align: center; }
+            .cell-name {
+              text-align: left;
+              font-weight: 600;
+              word-break: break-word;
+              overflow-wrap: anywhere;
             }
+            .empty {
+              padding: 18px 8px;
+              text-align: center;
+              font-style: italic;
+            }
+            tbody tr {
+              break-inside: avoid;
+              page-break-inside: avoid;
+            }
+            tbody tr:nth-child(even) td { background: #fafafa; }
             .footer {
-              margin-top: 18px;
+              margin-top: 10px;
               display: grid;
               grid-template-columns: 1fr 1fr;
-              gap: 12px;
-              font-size: 11px;
+              gap: 8px 24px;
+              font-size: 12pt;
+              break-inside: avoid;
+              page-break-inside: avoid;
             }
-            .signature-block {
-              border-top: 1px solid #000;
-              padding-top: 8px;
+            .sig {
+              border-top: 0.75pt solid #000;
+              padding-top: 4px;
+              line-height: 1.5;
             }
-            @media print {
-              body { margin: 0; }
+            .sig strong {
+              text-transform: uppercase;
+              letter-spacing: 0.04em;
             }
           </style>
         </head>
         <body>
           <div class="doc">
             <div class="header">
-              <div class="school">${(schoolName ?? "School Name").replace(/</g, "&lt;")}</div>
+              <div class="school">${escapeHtml(schoolName || "School Name")}</div>
               <h1>Individual Subject Attendance List</h1>
-              <div class="meta">${(exam.name ?? "").replace(/</g, "&lt;")} — ${(exam.term ?? "").replace(/</g, "&lt;")} — ${(exam.academic_year ?? "").replace(/</g, "&lt;")}</div>
-              <div class="meta">Class/Form: ${(exam.class_form ?? "").replace(/</g, "&lt;")}</div>
-              <div class="meta">Subject: ${(subject.name ?? "").replace(/</g, "&lt;")} ${subject.subject_code ? `Code: ${subject.subject_code}` : ""}</div>
+              <div class="meta">${escapeHtml(exam.name)} &mdash; ${escapeHtml(exam.term)} &mdash; ${escapeHtml(exam.academic_year)}</div>
+              <div class="meta">Class/Form: <strong>${escapeHtml(exam.class_form)}</strong></div>
+              <div class="meta">Subject: <strong>${escapeHtml(subject.name)}</strong>${subject.subject_code ? ` &middot; Code: <strong>${escapeHtml(subject.subject_code)}</strong>` : ""}</div>
             </div>
 
             <div class="summary">Total: ${sortedStudents.length} | Female: ${femaleCount} | Male: ${maleCount}</div>
@@ -178,24 +222,24 @@ export function ISALDocument({
             </table>
 
             <div class="footer">
-              <div class="signature-block">
-                <div><strong>Invigilator 1</strong></div>
-                <div>Name: ______________________________</div>
-                <div>Signature: _________________________</div>
+              <div class="sig">
+                <strong>Invigilator 1</strong><br />
+                Name: ______________________________<br />
+                Signature: _________________________
               </div>
-              <div class="signature-block">
-                <div><strong>Invigilator 2</strong></div>
-                <div>Name: ______________________________</div>
-                <div>Signature: _________________________</div>
+              <div class="sig">
+                <strong>Invigilator 2</strong><br />
+                Name: ______________________________<br />
+                Signature: _________________________
               </div>
-              <div class="signature-block">
-                <div><strong>Subject Teacher</strong></div>
-                <div>Name: ______________________________</div>
-                <div>Signature: _________________________</div>
+              <div class="sig">
+                <strong>Subject Teacher</strong><br />
+                Name: ______________________________<br />
+                Signature: _________________________
               </div>
-              <div class="signature-block">
-                <div><strong>Date</strong></div>
-                <div>_______________________________</div>
+              <div class="sig">
+                <strong>Date</strong><br />
+                _______________________________
               </div>
             </div>
           </div>
@@ -203,13 +247,54 @@ export function ISALDocument({
       </html>
     `;
 
-    printWindow.document.open();
-    printWindow.document.write(printHtml);
-    printWindow.document.close();
-    setTimeout(() => {
-      printWindow.focus();
-      printWindow.print();
-    }, 300);
+    // Print through a hidden iframe: no popup blockers and no blank tab.
+    const frame = document.createElement("iframe");
+    frame.id = "isal-print-frame";
+    frame.setAttribute("aria-hidden", "true");
+    frame.style.position = "fixed";
+    frame.style.right = "0";
+    frame.style.bottom = "0";
+    frame.style.width = "0";
+    frame.style.height = "0";
+    frame.style.border = "0";
+    frame.style.visibility = "hidden";
+    document.body.appendChild(frame);
+
+    const frameWindow = frame.contentWindow;
+    const frameDocument = frameWindow?.document;
+    if (!frameWindow || !frameDocument) {
+      frame.remove();
+      return;
+    }
+
+    frameDocument.open();
+    frameDocument.write(printHtml);
+    frameDocument.close();
+
+    let printed = false;
+    const removeFrame = () => {
+      if (frame.isConnected) frame.remove();
+    };
+    const triggerPrint = () => {
+      if (printed) return;
+      printed = true;
+      try {
+        frameWindow.focus();
+        frameWindow.print();
+      } finally {
+        window.setTimeout(removeFrame, 1000);
+      }
+    };
+
+    frameWindow.onafterprint = removeFrame;
+    if (frameDocument.readyState === "complete") {
+      window.setTimeout(triggerPrint, 150);
+    } else {
+      frameWindow.addEventListener("load", () => window.setTimeout(triggerPrint, 150), {
+        once: true,
+      });
+      window.setTimeout(triggerPrint, 800);
+    }
   };
 
   return (
@@ -218,104 +303,6 @@ export function ISALDocument({
         @page {
           size: A4 portrait;
           margin: 12mm;
-        }
-
-        @media print {
-          html,
-          body {
-            background: #fff !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            overflow: visible !important;
-            print-color-adjust: exact;
-            -webkit-print-color-adjust: exact;
-          }
-
-          body,
-          body * {
-            visibility: visible !important;
-          }
-
-          body *:not(.isal-print-shell):not(:has(.isal-print-shell)):not(.isal-print-shell *) {
-            display: none !important;
-          }
-
-          body:has(.isal-print-shell),
-          body *:has(.isal-print-shell) {
-            display: block !important;
-            position: static !important;
-            width: auto !important;
-            max-width: none !important;
-            height: auto !important;
-            min-height: 0 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            overflow: visible !important;
-          }
-
-          .no-print {
-            display: none !important;
-          }
-
-          .isal-print-shell,
-          .isal-print-shell * {
-            visibility: visible !important;
-          }
-
-          .isal-print-shell {
-            position: static !important;
-            display: block !important;
-            width: 100% !important;
-            max-width: none !important;
-            overflow: visible !important;
-            height: auto !important;
-            box-shadow: none !important;
-            border: none !important;
-            padding: 0 !important;
-            margin: 0 !important;
-          }
-
-          .isal-document {
-            display: block !important;
-            visibility: visible !important;
-            width: 100% !important;
-            max-width: none !important;
-            overflow: visible !important;
-            height: auto !important;
-            border: 1px solid #000 !important;
-            box-shadow: none !important;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-
-          .isal-document table {
-            width: 100% !important;
-            border-collapse: collapse !important;
-            table-layout: fixed !important;
-            font-size: 11px !important;
-          }
-
-          .isal-document thead {
-            display: table-header-group;
-          }
-
-          .isal-document tr,
-          .isal-document th,
-          .isal-document td,
-          .isal-document .signature-block {
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
-          }
-
-          .isal-document th,
-          .isal-document td {
-            border: 1px solid #000 !important;
-          }
-
-          .isal-document .signature-block {
-            break-inside: avoid;
-            page-break-inside: avoid;
-          }
         }
 
         .isal-print-shell {
@@ -328,48 +315,132 @@ export function ISALDocument({
           border: 1px solid #000;
         }
 
-        .isal-document table {
-          width: 100%;
-          border-collapse: collapse;
-          table-layout: fixed;
+        .isal-table-wrap {
+          margin-top: 10px;
+          overflow-x: auto;
           border: 1px solid #000;
         }
+
+        .isal-document table {
+          width: 100%;
+          min-width: 520px;
+          border-collapse: collapse;
+          table-layout: fixed;
+          background: #fff;
+        }
+
+        .isal-document col.sn-col { width: 8%; }
+        .isal-document col.name-col { width: 34%; }
+        .isal-document col.gender-col { width: 10%; }
+        .isal-document col.signature-col { width: 24%; }
+        .isal-document col.marks-col { width: 24%; }
+
+        .isal-document thead { display: table-header-group; }
 
         .isal-document th,
         .isal-document td {
           border: 1px solid #000;
-          vertical-align: top;
+          padding: 6px;
           color: #000;
-          text-align: left;
+          font-size: 11px;
+          line-height: 1.3;
+          vertical-align: middle;
         }
 
-        .isal-document th {
-          background: #f5f5f5;
+        .isal-document thead th {
+          background: #f1f5f9;
+          text-align: center;
           font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.03em;
         }
 
-        .isal-document tr {
-          page-break-inside: avoid;
+        .isal-document .cell-center { text-align: center; }
+
+        .isal-document .cell-name {
+          text-align: left;
+          font-weight: 600;
+          word-break: break-word;
+          overflow-wrap: anywhere;
+        }
+
+        .isal-document .empty {
+          padding: 20px 8px;
+          text-align: center;
+          font-style: italic;
+        }
+
+        .isal-document tbody tr {
           break-inside: avoid;
+          page-break-inside: avoid;
         }
 
-        .isal-document .sn-col { width: 8%; }
-        .isal-document .name-col { width: 36%; }
-        .isal-document .gender-col { width: 10%; }
-        .isal-document .signature-col { width: 24%; }
-        .isal-document .marks-col { width: 22%; }
+        .isal-document tbody tr:nth-child(even) td {
+          background: #fafafa;
+        }
 
-        .signature-box {
-          display: block;
-          width: 100%;
-          min-height: 10mm;
-          border-bottom: 1px solid #000;
-          background: transparent;
+        @media (min-width: 640px) {
+          .isal-document th,
+          .isal-document td { font-size: 12px; }
+        }
+
+        @media print {
+          .no-print { display: none !important; }
+
+          .isal-document {
+            border: 0 !important;
+            border-radius: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+          }
+
+          .isal-document,
+          .isal-document * {
+            color: #000 !important;
+            font-size: 12pt !important;
+            line-height: 1.25 !important;
+          }
+
+          .isal-document h1 { font-size: 18pt !important; }
+
+          .isal-table-wrap {
+            margin-top: 10px !important;
+            overflow: visible !important;
+            border: 0 !important;
+          }
+
+          .isal-document table {
+            min-width: 0 !important;
+            width: 100% !important;
+            border: 1pt solid #000 !important;
+            border-collapse: collapse !important;
+            table-layout: fixed !important;
+          }
+
+          .isal-document th,
+          .isal-document td {
+            border: 0.75pt solid #000 !important;
+            padding: 4px !important;
+            font-size: 12pt !important;
+            line-height: 1.25 !important;
+          }
+
+          .isal-document thead th {
+            background: #eef0f3 !important;
+            text-align: center !important;
+          }
+
+          .isal-document .cell-name { text-align: left !important; }
+          .isal-document .cell-center { text-align: center !important; }
+
+          .isal-document tbody tr:nth-child(even) td {
+            background: #fafafa !important;
+          }
         }
       `}</style>
 
-      <div className="isal-print-shell mx-auto w-full max-w-6xl space-y-4 pb-10">
-        <div className="no-print flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="isal-print-shell mx-auto w-full max-w-6xl space-y-3 pb-6">
+        <div className="no-print flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
           <Link
             href={`${dashboardBase}/exams/${exam.id}/isal`}
             className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
@@ -387,12 +458,12 @@ export function ISALDocument({
           </button>
         </div>
 
-        <div className="isal-document rounded-2xl bg-white p-4 sm:p-6">
-          <header className="border-b border-black pb-4 text-center">
+        <div className="isal-document rounded-2xl bg-white p-4">
+          <header className="border-b border-black pb-3 text-center">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-800">
               {schoolName}
             </p>
-            <h1 className="mt-2 text-xl font-black uppercase tracking-wide text-black">
+            <h1 className="mt-1 text-lg font-black uppercase tracking-wide text-black sm:text-xl">
               Individual Subject Attendance List
             </h1>
             <p className="mt-1 text-sm font-semibold text-black">
@@ -401,7 +472,7 @@ export function ISALDocument({
             <p className="text-sm text-black">
               Class/Form: <span className="font-bold">{exam.class_form}</span>
             </p>
-            <div className="mt-3 flex flex-col gap-1 text-sm text-black sm:flex-row sm:items-center sm:justify-center sm:gap-4">
+            <div className="mt-2 flex flex-col items-center gap-1 text-sm text-black sm:flex-row sm:justify-center sm:gap-4">
               <span>
                 Subject: <span className="font-bold">{subject.name}</span>
               </span>
@@ -416,78 +487,71 @@ export function ISALDocument({
             </div>
           </header>
 
-          <div className="mt-4 text-right text-[11px] font-semibold uppercase tracking-wide text-black">
+          <div className="mt-3 text-right text-[11px] font-semibold uppercase tracking-wide text-black">
             Total: {sortedStudents.length} | Female: {femaleCount} | Male: {maleCount}
           </div>
 
-          {sortedStudents.length === 0 ? (
-            <div className="mt-5 rounded-xl border border-dashed border-black bg-white p-6 text-center text-sm text-black">
-              No students are registered for this subject in this class.
-            </div>
-          ) : (
-            <div className="mt-4 border border-black">
-              <table className="text-left text-[11px] sm:text-xs">
-                <colgroup>
-                  <col className="sn-col" />
-                  <col className="name-col" />
-                  <col className="gender-col" />
-                  <col className="signature-col" />
-                  <col className="marks-col" />
-                </colgroup>
-                <thead>
+          <div className="isal-table-wrap">
+            <table>
+              <colgroup>
+                <col className="sn-col" />
+                <col className="name-col" />
+                <col className="gender-col" />
+                <col className="signature-col" />
+                <col className="marks-col" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>S/N</th>
+                  <th>Student Full Name</th>
+                  <th>Gender</th>
+                  <th>Signature</th>
+                  <th>Marks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedStudents.length === 0 ? (
                   <tr>
-                    <th className="px-2 py-2 text-center">S/N</th>
-                    <th className="px-2 py-2 text-center">Student Full Name</th>
-                    <th className="px-2 py-2 text-center">Gender</th>
-                    <th className="px-2 py-2 text-center">Signature</th>
-                    <th className="px-2 py-2 text-center">Marks</th>
+                    <td className="empty" colSpan={5}>
+                      No students are registered for this subject in this class.
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {sortedStudents.map((student, index) => (
+                ) : (
+                  sortedStudents.map((student, index) => (
                     <tr key={student.id}>
-                      <td className="px-2 py-3 text-center font-semibold">{index + 1}</td>
-                      <td className="px-2 py-3 font-medium text-black">{student.full_name}</td>
-                      <td className="px-2 py-3 text-center font-semibold text-black">
-                        {student.sex ? student.sex.toUpperCase() : "—"}
+                      <td className="cell-center font-semibold">{index + 1}</td>
+                      <td className="cell-name">{student.full_name}</td>
+                      <td className="cell-center font-semibold uppercase">
+                        {student.sex || "—"}
                       </td>
-                      <td className="px-2 py-3">
-                        <span className="signature-box" aria-label="Student signature" />
-                      </td>
-                      <td className="px-2 py-3">
-                        <span className="signature-box" aria-label="Student marks" />
-                      </td>
+                      <td className="cell-center" aria-label="Student signature" />
+                      <td className="cell-center" aria-label="Student marks" />
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
 
-          <div className="mt-6 space-y-4 text-[11px] sm:text-xs">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="signature-block border-t border-black pt-2">
-                <p className="font-semibold uppercase tracking-wide text-black">Invigilator 1</p>
-                <p className="mt-3">Name: ______________________________</p>
-                <p className="mt-3">Signature: _________________________</p>
-              </div>
-              <div className="signature-block border-t border-black pt-2">
-                <p className="font-semibold uppercase tracking-wide text-black">Invigilator 2</p>
-                <p className="mt-3">Name: ______________________________</p>
-                <p className="mt-3">Signature: _________________________</p>
-              </div>
+          <div className="mt-4 grid gap-x-6 gap-y-2 text-[11px] sm:grid-cols-2 sm:text-xs">
+            <div className="signature-block border-t border-black pt-2">
+              <p className="font-semibold uppercase tracking-wide text-black">Invigilator 1</p>
+              <p className="mt-2">Name: ______________________________</p>
+              <p className="mt-2">Signature: _________________________</p>
             </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="signature-block border-t border-black pt-2">
-                <p className="font-semibold uppercase tracking-wide text-black">Subject Teacher</p>
-                <p className="mt-3">Name: ______________________________</p>
-                <p className="mt-3">Signature: _________________________</p>
-              </div>
-              <div className="signature-block border-t border-black pt-2">
-                <p className="font-semibold uppercase tracking-wide text-black">Date</p>
-                <p className="mt-3">_______________________________</p>
-              </div>
+            <div className="signature-block border-t border-black pt-2">
+              <p className="font-semibold uppercase tracking-wide text-black">Invigilator 2</p>
+              <p className="mt-2">Name: ______________________________</p>
+              <p className="mt-2">Signature: _________________________</p>
+            </div>
+            <div className="signature-block border-t border-black pt-2">
+              <p className="font-semibold uppercase tracking-wide text-black">Subject Teacher</p>
+              <p className="mt-2">Name: ______________________________</p>
+              <p className="mt-2">Signature: _________________________</p>
+            </div>
+            <div className="signature-block border-t border-black pt-2">
+              <p className="font-semibold uppercase tracking-wide text-black">Date</p>
+              <p className="mt-2">_______________________________</p>
             </div>
           </div>
         </div>
