@@ -694,7 +694,7 @@ export function ExamResultsPage({
                 <option value="All">All sexes</option><option value="F">F</option><option value="M">M</option>
               </select>
             </div>
-            <div className="report-scroll hidden min-w-0 max-h-[70vh] overflow-y-auto overflow-x-hidden rounded border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 md:block">
+            <div className="report-scroll hidden min-w-0 overflow-x-hidden rounded border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 md:block">
               <table className="report-students-table w-full table-fixed border-collapse text-left text-[11px] leading-4 sm:text-xs">
                 <colgroup>
                   <col className="w-[5%]" />
@@ -788,7 +788,7 @@ export function ExamResultsPage({
 
           <section className="report-summary-section space-y-2">
             <h2 className="border-b border-slate-300 pb-1 text-xs font-bold uppercase tracking-wide dark:border-slate-700">Subject Performance Summary</h2>
-            <div className="report-scroll hidden min-w-0 max-h-[70vh] overflow-y-auto overflow-x-hidden rounded border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 2xl:block">
+            <div className="report-scroll hidden min-w-0 overflow-x-hidden rounded border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900 2xl:block">
               <table className="report-summary-table w-full table-fixed border-collapse text-center text-[9px] leading-3">
                 <colgroup>
                   <col className="w-[3%]" />
