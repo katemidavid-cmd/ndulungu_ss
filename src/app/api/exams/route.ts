@@ -2,6 +2,18 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 
+// Active examinations should always appear above drafts and processed ones.
+const EXAM_STATUS_ORDER: Record<string, number> = {
+  Active: 0,
+  Draft: 1,
+  Processed: 2,
+};
+
+function examStatusRank(status: string | null | undefined) {
+  if (!status) return 3;
+  return EXAM_STATUS_ORDER[status] ?? 3;
+}
+
 export async function GET(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -80,14 +92,13 @@ export async function GET(request: Request) {
   };
 
   const [
-    { data: exams, count, error },
+    { data: examRows, count, error },
     { count: overallTotal },
     { data: yearRows, error: yearsError },
   ] = await Promise.all([
     buildQuery()
       .order('created_at', { ascending: false })
-      .order('id')
-      .range(from, from + pageSize - 1),
+      .order('id'),
     buildOverallQuery(),
     buildYearsQuery(),
   ]);
@@ -96,6 +107,18 @@ export async function GET(request: Request) {
   if (yearsError) {
     return NextResponse.json({ error: yearsError.message }, { status: 500 });
   }
+  // `status` is a Postgres enum declared as (Draft, Active, Processed), so a
+  // plain SQL order would put drafts first. Rank explicitly to keep active
+  // examinations on top, then newest first within each status.
+  const exams = [...(examRows ?? [])]
+    .sort(
+      (a, b) =>
+        examStatusRank(a.status) - examStatusRank(b.status) ||
+        String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")) ||
+        String(a.id).localeCompare(String(b.id)),
+    )
+    .slice(from, from + pageSize);
+
   const total = count ?? 0;
   const availableYears = [
     ...new Set(
