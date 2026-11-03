@@ -44,6 +44,8 @@ type DragState = {
 type SaveState = "idle" | "saving" | "saved" | "error";
 
 const SIGNATURE_COLUMNS: SignatureKind[] = ["classTeacher", "academic", "headmaster"];
+// The report card is signed by the headmaster and the academic teacher only.
+const REPORT_CARD_SIGNATURE_COLUMNS: SignatureKind[] = ["academic", "headmaster"];
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_SIGNATURE_SIZE = 3 * 1024 * 1024;
 
@@ -55,18 +57,21 @@ export function ReportCardSignatures({ school }: { school: SchoolSignatures }) {
   const layout = normalizeSignatureLayout(school.signature_layout);
 
   return (
-    <section className="report-card-signatures relative mt-4 grid grid-cols-3 gap-6">
+    <section className="report-card-signatures relative mt-4 grid grid-cols-2 gap-6">
       <div className="pointer-events-none absolute inset-0 z-10" aria-hidden="true">
-        {SIGNATURE_KINDS.map((kind) => {
+        {REPORT_CARD_SIGNATURE_COLUMNS.map((kind, index) => {
           const url = school[SIGNATURE_URL_FIELDS[kind]];
           if (!url) return null;
           const placement = layout[kind];
+          const left =
+            ((index + 0.5) * 100) / REPORT_CARD_SIGNATURE_COLUMNS.length -
+            placement.width / 2;
           return (
             <div
               key={kind}
               className="absolute"
               style={{
-                left: `${placement.x}%`,
+                left: `${Math.max(0, left)}%`,
                 top: `${placement.y}%`,
                 width: `${placement.width}%`,
                 height: `${placement.height}%`,
@@ -85,7 +90,7 @@ export function ReportCardSignatures({ school }: { school: SchoolSignatures }) {
         })}
       </div>
 
-      {SIGNATURE_COLUMNS.map((kind) => (
+      {REPORT_CARD_SIGNATURE_COLUMNS.map((kind) => (
         <div
           key={kind}
           className="report-card-signature relative z-20 text-center text-[12px] font-bold uppercase"

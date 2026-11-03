@@ -1,7 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, Download, Moon, PenLine, Printer, Sun } from "lucide-react";
+import {
+  Building2,
+  CalendarDays,
+  ChevronDown,
+  ClipboardList,
+  Download,
+  GraduationCap,
+  ListChecks,
+  Moon,
+  PenLine,
+  Printer,
+  SlidersHorizontal,
+  Sun,
+  UserRound,
+} from "lucide-react";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
 import {
   ReportCardSignatures,
@@ -92,18 +106,6 @@ type SubjectRow = {
   remark: string;
 };
 
-type TrendKind = "up" | "down" | "same" | "none";
-
-type HistoryRow = {
-  exam: Exam;
-  date: string;
-  average: number | null;
-  position: number | null;
-  grade: string | null;
-  points: number | null;
-  trend: TrendKind;
-};
-
 const GRADE_POINTS: Record<string, number> = { A: 1, B: 2, C: 3, D: 4, F: 5 };
 const GRADE_REMARKS: Record<string, string> = {
   A: "Bora",
@@ -119,22 +121,65 @@ const GRADE_CELL_CLASS: Record<string, string> = {
   D: "grade-d bg-orange-100 text-orange-900 dark:bg-orange-900/50 dark:text-orange-100",
   F: "grade-f bg-red-100 text-red-900 dark:bg-red-900/50 dark:text-red-100",
 };
-const TREND_DISPLAY: Record<TrendKind, { text: string; className: string }> = {
-  up: { text: "▲ Imeboreka", className: "trend-up text-green-700 dark:text-green-400" },
-  down: { text: "▼ Imepungua", className: "trend-down text-red-700 dark:text-red-400" },
-  same: { text: "— Hakuna mabadiliko", className: "trend-same text-slate-500 dark:text-slate-400" },
-  none: { text: "—", className: "trend-none text-slate-500 dark:text-slate-400" },
-};
 const BEHAVIOUR_ITEMS = [
   "Bidii katika kazi",
-  "Heshima na kuthamini wajibu",
+  "Heshima kwa walimu na wanafunzi",
   "Kutunza mali za umma",
   "Uelewa na ushirikiano",
-  "Heshima kwa walimu na wanafunzi",
-  "Kutii na kufuata maelekezo",
   "Usafi binafsi",
-  "Kushiriki katika shughuli za kitamaduni",
+  "Utii na kufuata maelekezo",
+  "Kuhudhuria masomo kwa wakati",
+  "Kutokuruka masomo bila ruhusa",
+  "Uadilifu na uaminifu",
 ];
+type BehaviourRating = "vizuriSana" | "vizuri" | "wastani" | "dhaifu";
+const BEHAVIOUR_RATINGS: BehaviourRating[] = [
+  "vizuriSana",
+  "vizuri",
+  "wastani",
+  "dhaifu",
+];
+
+function hashString(value: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function behaviourMarkFor(
+  studentId: string,
+  item: string,
+  index: number,
+  average: number | null,
+  position: number | null,
+  totalStudents: number,
+): BehaviourRating {
+  const roll = hashString(`${studentId}:${item}:${index}`) / 4294967295;
+  const positionRatio =
+    position && totalStudents > 0 ? position / totalStudents : 0.5;
+  const isTop = positionRatio <= 0.25 || (average !== null && average >= 75);
+  const isLow = positionRatio > 0.75 || (average !== null && average < 40);
+  const guaranteedIndex = hashString(studentId) % BEHAVIOUR_ITEMS.length;
+
+  if (isTop) {
+    if (roll < 0.22 || index === guaranteedIndex) return "vizuriSana";
+    if (roll < 0.6) return "vizuri";
+    return "wastani";
+  }
+
+  if (isLow) {
+    if (roll < 0.12 || index === guaranteedIndex) return "dhaifu";
+    if (roll < 0.42) return "wastani";
+    return "vizuri";
+  }
+
+  if (roll < 0.14 || index === guaranteedIndex) return "vizuriSana";
+  if (roll < 0.52) return "vizuri";
+  return "wastani";
+}
 const SWAHILI_MONTHS = [
   "Januari",
   "Februari",
@@ -149,39 +194,32 @@ const SWAHILI_MONTHS = [
   "Novemba",
   "Desemba",
 ];
-const SWAHILI_SHORT_MONTHS = [
-  "Jan",
-  "Feb",
-  "Mac",
-  "Apr",
-  "Mei",
-  "Jun",
-  "Jul",
-  "Ago",
-  "Sep",
-  "Okt",
-  "Nov",
-  "Des",
-];
 const selectClass =
-  "h-10 w-full appearance-none truncate rounded-lg border border-slate-200 bg-slate-50 pl-3 pr-9 text-sm font-medium text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-blue-400";
+  "h-11 w-full appearance-none truncate rounded-xl border border-slate-300 bg-white pl-10 pr-10 text-sm font-semibold text-slate-800 shadow-[inset_0_1px_2px_rgba(15,23,42,0.05)] outline-none transition hover:border-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 disabled:shadow-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:border-slate-500 dark:focus:border-blue-400 dark:focus:ring-blue-400/10 dark:disabled:bg-slate-800/60 dark:disabled:text-slate-500";
+const inputClass =
+  "h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-3 text-sm font-semibold text-slate-800 shadow-[inset_0_1px_2px_rgba(15,23,42,0.05)] outline-none transition hover:border-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:border-slate-500 dark:focus:border-blue-400 dark:focus:ring-blue-400/10 dark:disabled:bg-slate-800/60 dark:disabled:text-slate-500";
 
 function SelectField({
   label,
+  icon: Icon,
   value,
   onChange,
   disabled,
+  className,
   children,
 }: {
   label: string;
+  icon: React.ComponentType<{ className?: string }>;
   value: string | number;
   onChange: (value: string) => void;
   disabled?: boolean;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <label className="min-w-0">
-      <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+    <label className={`group min-w-0 ${className ?? ""}`}>
+      <span className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors group-focus-within:text-blue-700 dark:text-slate-400 dark:group-focus-within:text-blue-300">
+        <Icon className="h-3 w-3 text-slate-400 transition-colors group-focus-within:text-blue-600 dark:text-slate-500 dark:group-focus-within:text-blue-400" />
         {label}
       </span>
       <span className="relative block">
@@ -193,7 +231,36 @@ function SelectField({
         >
           {children}
         </select>
-        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+        <Icon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-blue-600 dark:text-slate-500 dark:group-focus-within:text-blue-400" />
+        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition-transform group-focus-within:rotate-180 dark:text-slate-500" />
+      </span>
+    </label>
+  );
+}
+
+function DateField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="group min-w-0">
+      <span className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors group-focus-within:text-blue-700 dark:text-slate-400 dark:group-focus-within:text-blue-300">
+        <CalendarDays className="h-3 w-3 text-slate-400 transition-colors group-focus-within:text-blue-600 dark:text-slate-500 dark:group-focus-within:text-blue-400" />
+        {label}
+      </span>
+      <span className="relative block">
+        <input
+          type="date"
+          className={inputClass}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-blue-600 dark:text-slate-500 dark:group-focus-within:text-blue-400" />
       </span>
     </label>
   );
@@ -217,34 +284,49 @@ function formatAverage(value: number | null | undefined) {
   return score === "—" ? score : `${score}%`;
 }
 
-function parseDate(value: string) {
-  const parsed = new Date(`${value}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function formatDateSlash(value: string) {
-  const date = parseDate(value);
-  if (!date) return value || "—";
-  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
-}
-
-function formatShortMonthYear(value: string) {
-  const date = parseDate(value);
-  if (!date) return value || "—";
-  return `${SWAHILI_SHORT_MONTHS[date.getMonth()]} ${date.getFullYear()}`;
-}
-
 function formatSwahiliDate(date: Date) {
   return `${date.getDate()} ${SWAHILI_MONTHS[date.getMonth()]} ${date.getFullYear()}`;
 }
 
+function formatInputDate(value: string) {
+  if (!value) return "—";
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? value : formatSwahiliDate(date);
+}
+
+const DEFAULT_DISTRICT = "Iramba";
+
+function swahiliDistrictName(district: string) {
+  const raw = (district || "").trim();
+  if (!raw) return DEFAULT_DISTRICT;
+  const cleaned = raw
+    .replace(/\bhalmashauri\s+ya\s+wilaya\s+ya\b/gi, "")
+    .replace(/\bdistrict\s+council\b/gi, "")
+    .replace(/\bwilaya\s+ya\b/gi, "")
+    .replace(/\bdistrict\b/gi, "")
+    .trim();
+  return cleaned || DEFAULT_DISTRICT;
+}
+
+function swahiliSchoolName(name: string) {
+  const trimmed = (name || "").trim();
+  if (!trimmed) return "Shule ya Sekondari Ndulungu";
+  const secondary = trimmed.match(/^(.*?)\s+secondary\s+school$/i);
+  if (secondary?.[1]?.trim()) {
+    return `Shule ya Sekondari ${secondary[1].trim()}`;
+  }
+  return trimmed;
+}
+
 function postalLine(address: string) {
   const trimmed = address.trim();
-  if (!trimmed) return "S.L.P. —";
+  if (!trimmed) return "S.L.P. 155";
   const match = trimmed.match(
     /(?:p\.?\s*o\.?\s*box|s\.?\s*l\.?\s*p\.?)\s*[:#-]?\s*(.+)/i,
   );
-  return `S.L.P. ${match?.[1]?.trim() || trimmed}`;
+  const box = match?.[1]?.trim();
+  if (!box || /^[-—]+$/.test(box)) return "S.L.P. 155";
+  return `S.L.P. ${box}`;
 }
 
 function divisionText(division: string | null) {
@@ -252,14 +334,6 @@ function divisionText(division: string | null) {
   const cleaned = division.replace(/^DIV\s*/i, "").trim();
   if (!cleaned || cleaned.toLowerCase() === "incomplete") return "—";
   return cleaned;
-}
-
-function trendFor(current: number | null, older: number | null): TrendKind {
-  if (current === null || older === null) return "none";
-  const difference = Math.round((current - older) * 100) / 100;
-  if (difference > 0) return "up";
-  if (difference < 0) return "down";
-  return "same";
 }
 
 function sortExamsNewestFirst(a: Exam, b: Exam) {
@@ -288,48 +362,6 @@ function subjectsFor(result: StoredResult, subjects: SubjectMeta[]): SubjectRow[
     .sort((a, b) => a.name.localeCompare(b.name, "sw"));
 }
 
-function historyFor(
-  exam: Exam,
-  exams: Exam[],
-  results: Record<string, Record<string, StoredResult>>,
-  studentId: string,
-  previousCount: number,
-): HistoryRow[] {
-  const selectedIndex = exams.findIndex((item) => item.id === exam.id);
-  if (selectedIndex < 0) {
-    const result = results[exam.id]?.[studentId];
-    return [
-      {
-        exam,
-        date: formatDateSlash(exam.start_date),
-        average: result?.average ?? null,
-        position: result?.position ?? null,
-        grade: result?.grade ?? null,
-        points: result?.points ?? null,
-        trend: "none",
-      },
-    ];
-  }
-
-  const displayed = exams.slice(selectedIndex, selectedIndex + previousCount + 1);
-  return displayed.map((historyExam, index) => {
-    const result = results[historyExam.id]?.[studentId];
-    const nextOlderExam = exams[selectedIndex + index + 1];
-    const olderResult = nextOlderExam
-      ? results[nextOlderExam.id]?.[studentId]
-      : null;
-    return {
-      exam: historyExam,
-      date: formatDateSlash(historyExam.start_date),
-      average: result?.average ?? null,
-      position: result?.position ?? null,
-      grade: result?.grade ?? null,
-      points: result?.points ?? null,
-      trend: trendFor(result?.average ?? null, olderResult?.average ?? null),
-    };
-  });
-}
-
 function buildParentParagraph(
   student: Student,
   exam: Exam,
@@ -339,7 +371,32 @@ function buildParentParagraph(
   const firstName = student.full_name.trim().split(/\s+/)[0] || student.full_name;
   const position = result.position === null ? "—" : String(result.position);
   const total = totalStudents > 0 ? String(totalStudents) : "—";
-  return `MZAZI/MLEZI WA ${student.full_name.toUpperCase()}, KATIKA MTIHANI WA ${exam.name.toUpperCase()} ${exam.academic_year}, ${firstName.toUpperCase()} AMESHIKA NAFASI YA ${position} KATI YA WANAFUNZI ${total} WALIOFANYA MTIHANI, AKIWA NA WASTANI WA ${formatScore(result.average)}%, DIVISENI ${divisionText(result.division)} ZA POINTI ${result.points ?? "—"}. ASANTE.`;
+  return `Mzazi/Mlezi wa ${student.full_name}, katika mtihani wa ${exam.name} ${exam.academic_year}, ${firstName} ameshika nafasi ya ${position} kati ya wanafunzi ${total} waliofanya mtihani, akiwa na wastani wa ${formatScore(result.average)}%, divisheni ${divisionText(result.division)} za pointi ${result.points ?? "—"}. Asante.`;
+}
+
+function ParentParagraph({
+  student,
+  exam,
+  result,
+  totalStudents,
+}: {
+  student: Student;
+  exam: Exam;
+  result: StoredResult;
+  totalStudents: number;
+}) {
+  const firstName = student.full_name.trim().split(/\s+/)[0] || student.full_name;
+  const position = result.position === null ? "—" : String(result.position);
+  const total = totalStudents > 0 ? String(totalStudents) : "—";
+
+  return (
+    <>
+      Mzazi/Mlezi wa <span className="font-bold italic">{student.full_name}</span>, katika
+      mtihani wa {exam.name} {exam.academic_year}, {firstName} ameshika nafasi ya {position}{" "}
+      kati ya wanafunzi {total} waliofanya mtihani, akiwa na wastani wa {formatScore(result.average)}%,
+      divisheni {divisionText(result.division)} za pointi {result.points ?? "—"}. Asante.
+    </>
+  );
 }
 
 function csvCell(value: unknown) {
@@ -357,13 +414,16 @@ export function ReportCardsPage() {
   const [classFilter, setClassFilter] = useState("");
   const [yearFilter, setYearFilter] = useState("");
   const [studentFilter, setStudentFilter] = useState("all");
-  const [previousCount, setPreviousCount] = useState(2);
   const [data, setData] = useState<ReportData | null>(null);
   const [loadingExams, setLoadingExams] = useState(true);
   const [loadingReport, setLoadingReport] = useState(false);
   const [error, setError] = useState("");
   const [darkMode, setDarkMode] = useState(false);
   const [reportDate, setReportDate] = useState("");
+  const [schoolStatus, setSchoolStatus] = useState<"open" | "closed">("open");
+  const [closingDate, setClosingDate] = useState("");
+  const [openingDate, setOpeningDate] = useState("");
+  const [behaviourMode, setBehaviourMode] = useState<"blank" | "auto">("blank");
   const [showSignatureManager, setShowSignatureManager] = useState(false);
 
   useEffect(() => {
@@ -552,9 +612,13 @@ export function ReportCardsPage() {
   function exportExcel() {
     if (!data || cards.length === 0) return;
     const rows: (string | number)[][] = [
-      [data.school.school_name],
-      [`HALMASHAURI YA WILAYA YA ${data.school.district || data.school.region || "—"}`],
-      [`RESULTS REPORT — ${data.exam.name} ${data.exam.academic_year}`],
+      [swahiliSchoolName(data.school.school_name)],
+      [
+        `HALMASHAURI YA WILAYA YA ${swahiliDistrictName(
+          data.school.district,
+        ).toUpperCase()}`,
+      ],
+      [`RIPOTI YA MATOKEO — ${data.exam.name} ${data.exam.academic_year}`],
       [`Darasa: ${data.exam.class_form}`, `Tarehe: ${reportDate || "—"}`],
       [],
       [
@@ -567,7 +631,6 @@ export function ReportCardsPage() {
         "POINTI",
         "DIVISENI",
         "MASOMO",
-        "HISTORIA YA MITIHANI",
         "MAONI MKUU WA SHULE",
         "MAONI MWALIMU WA TAALUMA",
         "MAONI MWALIMU WA DARASA",
@@ -579,13 +642,6 @@ export function ReportCardsPage() {
       const result = selectedExamResults[student.id];
       if (!result) continue;
       const subjectRows = subjectsFor(result, data.subjects);
-      const history = historyFor(
-        data.exam,
-        data.exams,
-        data.results,
-        student.id,
-        previousCount,
-      );
       rows.push([
         result.position ?? "—",
         student.full_name,
@@ -597,12 +653,6 @@ export function ReportCardsPage() {
         divisionText(result.division),
         subjectRows
           .map((subject) => `${subject.name}: ${formatScore(subject.mark)}% (${subject.grade}, ${subject.points})`)
-          .join("; "),
-        history
-          .map(
-            (row) =>
-              `${row.exam.name} (${formatAverage(row.average)}, Nafasi ${row.position ?? "—"}, ${row.grade ?? "—"}, Pts ${row.points ?? "—"})`,
-          )
           .join("; "),
         commentForAverage(result.average, "headmaster", student.id),
         commentForAverage(result.average, "subjectTeacher", student.id),
@@ -653,73 +703,155 @@ export function ReportCardsPage() {
             </button>
           </div>
 
-          <div className="grid gap-3 px-4 py-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-5">
-            <SelectField
-              label="Class"
-              value={classFilter}
-              onChange={chooseClass}
-              disabled={loadingExams}
-            >
-              {classOptions.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </SelectField>
+          <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-4 dark:border-slate-800 dark:bg-slate-900/40 sm:px-5">
+            <div className="mb-3 flex items-center gap-2.5">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-blue-50 text-blue-600 shadow-sm dark:border-blue-900 dark:bg-blue-950/60 dark:text-blue-300">
+                <SlidersHorizontal className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-700 dark:text-slate-200">
+                  Report Filters
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Select class, year, exam and student
+                </p>
+              </div>
+            </div>
 
-            <SelectField
-              label="Exam"
-              value={selectedExamId}
-              onChange={chooseExam}
-              disabled={loadingExams}
-            >
-              {examOptions.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name} · {item.term}
-                </option>
-              ))}
-            </SelectField>
+            <div className="grid grid-cols-1 gap-x-3 gap-y-4 sm:grid-cols-2">
+              <SelectField
+                label="Class"
+                icon={GraduationCap}
+                value={classFilter}
+                onChange={chooseClass}
+                disabled={loadingExams}
+              >
+                {classOptions.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </SelectField>
 
-            <SelectField
-              label="Year"
-              value={yearFilter}
-              onChange={chooseYear}
-              disabled={loadingExams}
-            >
-              {yearOptions.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </SelectField>
+              <SelectField
+                label="Year"
+                icon={CalendarDays}
+                value={yearFilter}
+                onChange={chooseYear}
+                disabled={loadingExams}
+              >
+                {yearOptions.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </SelectField>
 
-            <SelectField
-              label="Student"
-              value={studentFilter}
-              onChange={setStudentFilter}
-              disabled={!data || loadingReport}
-            >
-              <option value="all">All students</option>
-              {studentOptions.map((student) => (
-                <option key={student.id} value={student.id}>
-                  {student.full_name}
-                </option>
-              ))}
-            </SelectField>
+              <SelectField
+                label="Exam"
+                icon={ClipboardList}
+                value={selectedExamId}
+                onChange={chooseExam}
+                disabled={loadingExams}
+              >
+                {examOptions.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name} · {item.term}
+                  </option>
+                ))}
+              </SelectField>
 
-            <SelectField
-              label="Previous exams"
-              value={previousCount}
-              onChange={(value) =>
-                setPreviousCount(Math.min(3, Math.max(0, Number(value))))
-              }
-            >
-              {[0, 1, 2, 3].map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </SelectField>
+              <SelectField
+                label="Student"
+                icon={UserRound}
+                value={studentFilter}
+                onChange={setStudentFilter}
+                disabled={!data || loadingReport}
+              >
+                <option value="all">All students</option>
+                {studentOptions.map((student) => (
+                  <option key={student.id} value={student.id}>
+                    {student.full_name}
+                  </option>
+                ))}
+              </SelectField>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/40 p-3 dark:border-blue-900/50 dark:bg-blue-950/20">
+              <div className="mb-2 flex items-center gap-2">
+                <Building2 className="h-3.5 w-3.5 text-blue-600 dark:text-blue-300" />
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-700 dark:text-blue-300">
+                  Hali ya Shule — Ripoti Zote
+                </p>
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div className="sm:w-52">
+                  <SelectField
+                    label="Hali"
+                    icon={Building2}
+                    value={schoolStatus}
+                    onChange={(value) =>
+                      setSchoolStatus(value === "closed" ? "closed" : "open")
+                    }
+                  >
+                    <option value="open">Haitafungwa</option>
+                    <option value="closed">Itafungwa</option>
+                  </SelectField>
+                </div>
+                {schoolStatus === "closed" ? (
+                  <>
+                    <div className="sm:flex-1">
+                      <DateField
+                        label="Tarehe ya Kufunga"
+                        value={closingDate}
+                        onChange={setClosingDate}
+                      />
+                    </div>
+                    <div className="sm:flex-1">
+                      <DateField
+                        label="Tarehe ya Kufungua"
+                        value={openingDate}
+                        onChange={setOpeningDate}
+                      />
+                    </div>
+                  </>
+                ) : null}
+              </div>
+              <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+                {schoolStatus === "closed"
+                  ? "Tarehe za kufunga na kufungua zitawekwa kwenye ripoti zote."
+                  : "Shule Haitafungwa itawekwa kwenye ripoti zote."}
+              </p>
+            </div>
+
+            <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/40 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+              <div className="mb-2 flex items-center gap-2">
+                <ListChecks className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-300" />
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-300">
+                  Tabia na Mwenendo — Ripoti Zote
+                </p>
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div className="sm:w-72">
+                  <SelectField
+                    label="Utekelezaji"
+                    icon={ListChecks}
+                    value={behaviourMode}
+                    onChange={(value) =>
+                      setBehaviourMode(value === "auto" ? "auto" : "blank")
+                    }
+                  >
+                    <option value="blank">Acha tupu (kujaza kwa mkono)</option>
+                    <option value="auto">Jaza kiotomatiki</option>
+                  </SelectField>
+                </div>
+              </div>
+              <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+                {behaviourMode === "auto"
+                  ? "Alama za ✓ zitawekwa kiotomatiki: wengi VIZURI, wanafunzi bora VIZURI SANA, na wachache WASTANI."
+                  : "Masanduku yataachwa tupu ili ujaze kwa mkono baada ya kuchapisha."}
+              </p>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50/70 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70 sm:px-5">
@@ -784,15 +916,16 @@ export function ReportCardsPage() {
           <ReportCard
             key={student.id}
             exam={data.exam}
-            exams={data.exams}
             school={data.school}
             student={student}
             result={selectedExamResults[student.id]}
-            results={data.results}
             subjects={data.subjects}
-            previousCount={previousCount}
             reportDate={reportDate}
             totalStudents={totalStudents}
+            schoolStatus={schoolStatus}
+            closingDate={closingDate}
+            openingDate={openingDate}
+            behaviourMode={behaviourMode}
           />
         ))
       ) : null}
@@ -802,30 +935,32 @@ export function ReportCardsPage() {
 
 function ReportCard({
   exam,
-  exams,
   school,
   student,
   result,
-  results,
   subjects,
-  previousCount,
   reportDate,
   totalStudents,
+  schoolStatus,
+  closingDate,
+  openingDate,
+  behaviourMode,
 }: {
   exam: Exam;
-  exams: Exam[];
   school: School;
   student: Student;
   result: StoredResult;
-  results: Record<string, Record<string, StoredResult>>;
   subjects: SubjectMeta[];
-  previousCount: number;
   reportDate: string;
   totalStudents: number;
+  schoolStatus: "open" | "closed";
+  closingDate: string;
+  openingDate: string;
+  behaviourMode: "blank" | "auto";
 }) {
   const subjectRows = subjectsFor(result, subjects);
-  const historyRows = historyFor(exam, exams, results, student.id, previousCount);
-  const district = school.district || school.region || "—";
+  const district = swahiliDistrictName(school.district);
+  const schoolName = swahiliSchoolName(school.school_name);
   const displayForm = student.form || exam.class_form;
   const displayStream = student.stream || "—";
   const comments = {
@@ -833,29 +968,28 @@ function ReportCard({
     subjectTeacher: commentForAverage(result.average, "subjectTeacher", student.id),
     classTeacher: commentForAverage(result.average, "classTeacher", student.id),
   };
-  const parentParagraph = buildParentParagraph(student, exam, result, totalStudents);
 
   return (
     <article className="report-card mx-auto w-full bg-white p-[7mm] text-slate-900 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-700 sm:p-[8mm]">
       <header className="report-card-header text-center">
         <p className="text-[12px] font-semibold uppercase tracking-wide text-slate-700 dark:text-slate-300">
-          HALMASHAURI YA WILAYA YA {district}
+          HALMASHAURI YA WILAYA YA {district.toUpperCase()}
         </p>
         <h1 className="text-lg font-extrabold uppercase leading-tight sm:text-xl">
-          {school.school_name}
+          {schoolName}
         </h1>
         <p className="text-[12px] text-slate-700 dark:text-slate-300">
           {postalLine(school.address)}
         </p>
-          <p className="report-card-exam-title mt-1 text-[12px] font-bold uppercase">
-          RESULTS REPORT — {exam.name} {exam.academic_year}
+        <p className="report-card-exam-title mt-1 text-[12px] font-bold uppercase">
+          RIPOTI YA MATOKEO — {exam.name} {exam.academic_year}
         </p>
       </header>
 
       <section className="report-student-info mt-2 border-y border-slate-300 py-1.5 text-[12px] leading-snug dark:border-slate-600">
         <p>
           <span className="font-bold">JINA:</span>{" "}
-          <span className="font-semibold">{student.full_name}</span>
+          <span className="font-bold italic">{student.full_name}</span>
         </p>
         <p className="mt-0.5">
           <span className="font-bold">Darasa:</span> {displayForm} |{" "}
@@ -864,7 +998,7 @@ function ReportCard({
         </p>
       </section>
 
-      <section className="mt-2">
+      <section className="mt-4">
         <table className="w-full table-fixed border-collapse text-left text-[12px] leading-tight">
           <colgroup>
             <col className="w-[44%]" />
@@ -926,27 +1060,35 @@ function ReportCard({
         </table>
       </section>
 
-      <section className="mt-2">
+      <p className="report-card-parent mt-4 border border-slate-300 p-1.5 text-justify text-[12px] leading-snug dark:border-slate-600">
+        <ParentParagraph
+          student={student}
+          exam={exam}
+          result={result}
+          totalStudents={totalStudents}
+        />
+      </p>
+
+      <section className="mt-4">
         <h2 className="report-card-section-title border-b border-slate-300 pb-0.5 text-[12px] font-bold uppercase tracking-wide text-slate-800 dark:border-slate-600 dark:text-slate-100">
-          HISTORIA YA MITIHANI — {exam.class_form.toUpperCase()}
+          TABIA NA MWENENDO
         </h2>
         <table className="mt-1 w-full table-fixed border-collapse text-left text-[12px] leading-tight">
           <colgroup>
-            <col className="w-[27%]" />
-            <col className="w-[11%]" />
-            <col className="w-[10%]" />
-            <col className="w-[9%]" />
-            <col className="w-[8%]" />
-            <col className="w-[8%]" />
-            <col className="w-[27%]" />
+            <col className="w-[5%]" />
+            <col className="w-[39%]" />
+            <col className="w-[14%]" />
+            <col className="w-[14%]" />
+            <col className="w-[14%]" />
+            <col className="w-[14%]" />
           </colgroup>
           <thead className="bg-[#1f3a5f] text-white dark:bg-slate-700">
             <tr>
-              {["MTIHANI", "TAREHE", "WASTANI", "NAFASI", "DARAJA", "POINTI", "MWENENDO"].map(
+              {["NA.", "MAELEZO", "VIZURI SANA", "VIZURI", "WASTANI", "DHAIFU"].map(
                 (label) => (
                   <th
                     key={label}
-                    className="border border-slate-300 px-1 py-1 font-bold uppercase dark:border-slate-600"
+                    className="border border-slate-300 px-1 py-1 text-center font-bold uppercase dark:border-slate-600"
                   >
                     {label}
                   </th>
@@ -955,102 +1097,58 @@ function ReportCard({
             </tr>
           </thead>
           <tbody>
-            {historyRows.map((row) => (
-              <tr
-                key={row.exam.id}
-                className="border-t border-slate-300 odd:bg-white even:bg-slate-50 dark:border-slate-600 dark:odd:bg-slate-900 dark:even:bg-slate-800/60"
-              >
-                <td className="border border-slate-300 px-1 py-0.5 dark:border-slate-600">
-                  <span className="font-semibold">{row.exam.name}</span>
-                  <span className="ml-1 text-slate-500 dark:text-slate-400">
-                    · {formatShortMonthYear(row.exam.start_date)}
-                  </span>
-                </td>
-                <td className="border border-slate-300 px-1 py-0.5 text-center dark:border-slate-600">
-                  {row.date}
-                </td>
-                <td className="border border-slate-300 px-1 py-0.5 text-center dark:border-slate-600">
-                  {formatAverage(row.average)}
-                </td>
-                <td className="border border-slate-300 px-1 py-0.5 text-center dark:border-slate-600">
-                  {row.position ?? "—"}
-                </td>
-                <td className="border border-slate-300 px-1 py-0.5 text-center font-bold dark:border-slate-600">
-                  {row.grade ?? "—"}
-                </td>
-                <td className="border border-slate-300 px-1 py-0.5 text-center dark:border-slate-600">
-                  {row.points ?? "—"}
-                </td>
-                <td className="border border-slate-300 px-1 py-0.5 dark:border-slate-600">
-                  <span className={TREND_DISPLAY[row.trend].className}>
-                    {TREND_DISPLAY[row.trend].text}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+            {BEHAVIOUR_ITEMS.map((item, index) => {
+              const mark = behaviourMode === "auto"
+                ? behaviourMarkFor(
+                    student.id,
+                    item,
+                    index,
+                    result.average,
+                    result.position,
+                    totalStudents,
+                  )
+                : null;
 
-      <section className="mt-2">
-        <h2 className="report-card-section-title border-b border-slate-300 pb-0.5 text-[12px] font-bold uppercase tracking-wide text-slate-800 dark:border-slate-600 dark:text-slate-100">
-          TABIA NA MWENENDO
-        </h2>
-        <table className="mt-1 w-full table-fixed border-collapse text-left text-[12px] leading-tight">
-          <colgroup>
-            <col className="w-[4%]" />
-            <col className="w-[36%]" />
-            <col className="w-[10%]" />
-            <col className="w-[4%]" />
-            <col className="w-[36%]" />
-            <col className="w-[10%]" />
-          </colgroup>
-          <thead className="bg-[#1f3a5f] text-white dark:bg-slate-700">
-            <tr>
-              {["NA.", "MAELEZO", "ALAMA", "NA.", "MAELEZO", "ALAMA"].map((label, index) => (
-                <th
-                  key={`${label}-${index}`}
-                  className="border border-slate-300 px-1 py-1 font-bold uppercase dark:border-slate-600"
-                >
-                  {label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {[0, 1, 2, 3].map((index) => {
-              const rightIndex = index + 4;
               return (
                 <tr
-                  key={index}
+                  key={item}
                   className="border-t border-slate-300 odd:bg-white even:bg-slate-50 dark:border-slate-600 dark:odd:bg-slate-900 dark:even:bg-slate-800/60"
                 >
                   <td className="border border-slate-300 px-1 py-0.5 text-center dark:border-slate-600">
                     {index + 1}
                   </td>
                   <td className="border border-slate-300 px-1 py-0.5 dark:border-slate-600">
-                    {BEHAVIOUR_ITEMS[index]}
+                    {item}
                   </td>
-                  <td className="border border-slate-300 px-1 py-0.5 text-center tracking-widest text-slate-500 dark:border-slate-600 dark:text-slate-400">
-                    __________
-                  </td>
-                  <td className="border border-slate-300 px-1 py-0.5 text-center dark:border-slate-600">
-                    {rightIndex + 1}
-                  </td>
-                  <td className="border border-slate-300 px-1 py-0.5 dark:border-slate-600">
-                    {BEHAVIOUR_ITEMS[rightIndex]}
-                  </td>
-                  <td className="border border-slate-300 px-1 py-0.5 text-center tracking-widest text-slate-500 dark:border-slate-600 dark:text-slate-400">
-                    __________
-                  </td>
+                  {BEHAVIOUR_RATINGS.map((rating) => {
+                    const checked = mark === rating && behaviourMode === "auto";
+                    return (
+                      <td
+                        key={rating}
+                        className="border border-slate-300 px-1 py-0.5 text-center align-middle dark:border-slate-600"
+                      >
+                        {checked ? (
+                          <span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] border border-emerald-700 bg-emerald-600 text-[9px] font-bold text-white">
+                            ✓
+                          </span>
+                        ) : (
+                          <span className="mx-auto block h-3 w-3 rounded-[2px] border border-slate-400 dark:border-slate-500" />
+                        )}
+                      </td>
+                    );
+                  })}
                 </tr>
               );
             })}
           </tbody>
         </table>
+        <p className="mt-1 text-[9px] italic leading-snug text-slate-500 dark:text-slate-400">
+          Weka alama ya (✓) kwenye kisanduku kinacholingana na kiwango cha tabia na
+          nidhamu ya mwanafunzi.
+        </p>
       </section>
 
-      <section className="mt-2">
+      <section className="mt-4">
         <h2 className="report-card-section-title border-b border-slate-300 pb-0.5 text-[12px] font-bold uppercase tracking-wide text-slate-800 dark:border-slate-600 dark:text-slate-100">
           MAONI YA UONGOZI NA WALIMU
         </h2>
@@ -1067,9 +1165,51 @@ function ReportCard({
         </div>
       </section>
 
-      <p className="report-card-parent mt-2 border border-slate-300 p-1.5 text-justify text-[12px] leading-snug dark:border-slate-600">
-        {parentParagraph}
-      </p>
+      <section className="mt-4">
+        <h2 className="report-card-section-title border-b border-slate-300 pb-0.5 text-[12px] font-bold uppercase tracking-wide text-slate-800 dark:border-slate-600 dark:text-slate-100">
+          HALI YA SHULE
+        </h2>
+        {schoolStatus === "closed" ? (
+          <table className="mt-1 w-full table-fixed border-collapse text-left text-[12px] leading-tight">
+            <colgroup>
+              <col className="w-[40%]" />
+              <col className="w-[30%]" />
+              <col className="w-[30%]" />
+            </colgroup>
+            <thead className="bg-[#1f3a5f] text-white dark:bg-slate-700">
+              <tr>
+                {["HALI YA SHULE", "TAREHE YA KUFUNGA", "TAREHE YA KUFUNGUA"].map(
+                  (label) => (
+                    <th
+                      key={label}
+                      className="border border-slate-300 px-1 py-1 text-center font-bold uppercase dark:border-slate-600"
+                    >
+                      {label}
+                    </th>
+                  ),
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-t border-slate-300 odd:bg-white even:bg-slate-50 dark:border-slate-600 dark:odd:bg-slate-900 dark:even:bg-slate-800/60">
+                <td className="border border-slate-300 px-1 py-1 font-semibold dark:border-slate-600">
+                  Shule Itafungwa
+                </td>
+                <td className="border border-slate-300 px-1 py-1 text-center dark:border-slate-600">
+                  {formatInputDate(closingDate)}
+                </td>
+                <td className="border border-slate-300 px-1 py-1 text-center dark:border-slate-600">
+                  {formatInputDate(openingDate)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        ) : (
+          <p className="mt-1 border border-slate-300 p-1.5 text-center text-[12px] font-bold dark:border-slate-600">
+            Shule Haitafungwa
+          </p>
+        )}
+      </section>
 
       <ReportCardSignatures school={school} />
 
