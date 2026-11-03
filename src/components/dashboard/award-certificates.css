@@ -44,14 +44,22 @@ background:radial-gradient(ellipse at 50% 42%,#fffef9 0,#faf3df 70%,#f2e8c8 100%
 
 #certificate-print-root{display:none}
 @media print{
-  @page{size:A4 landscape;margin:0}
+  /* Named page: keeps these rules from changing the page setup of other
+     printouts (report cards, results) when this stylesheet stays loaded
+     after client-side navigation. */
+  @page certificates{size:A4 landscape;margin:0}
   html,body{margin:0!important;padding:0!important;background:#fff!important}
-  body>*:not(#certificate-print-root){display:none!important}
-  #certificate-print-root{display:block!important;background:#fff;min-height:0;padding:0}
+  /* Only hide the app shell while the certificate print root actually
+     exists (the class is added/removed around window.print()). Without
+     this scope, navigating from this page to a report card page leaves
+     this rule active and prints a blank page. */
+  body.printing-certificates>*:not(#certificate-print-root){display:none!important}
+  #certificate-print-root{display:block!important;visibility:visible!important;page:certificates;background:#fff;min-height:0;padding:0}
+  #certificate-print-root,#certificate-print-root *{visibility:visible!important}
   #certificate-print-root .sheet{padding:0;gap:0;display:block}
   #certificate-print-root .holder{width:297mm!important;height:210mm!important;box-shadow:none;break-after:page;page-break-after:always}
   #certificate-print-root .holder:last-child{break-after:auto;page-break-after:auto}
   #certificate-print-root .cert{transform:none!important}
-  #certificate-print-root .ph{visibility:hidden}
+  #certificate-print-root .ph{visibility:hidden!important}
   #certificate-print-root *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }

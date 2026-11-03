@@ -259,6 +259,7 @@ export default function AwardCertificatesPage() {
       `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="${gradientId}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f1d98a"/><stop offset=".5" stop-color="#c9a227"/><stop offset="1" stop-color="#8a6410"/></linearGradient></defs></svg>` +
       clone.outerHTML.replaceAll("url(#gold)", `url(#${gradientId})`);
     document.body.appendChild(root);
+    document.body.classList.add("printing-certificates");
 
     const previousTitle = document.title;
     document.title = "Certificates";
@@ -267,6 +268,7 @@ export default function AwardCertificatesPage() {
       if (cleaned) return;
       cleaned = true;
       document.title = previousTitle;
+      document.body.classList.remove("printing-certificates");
       root.remove();
     };
     const fallbackCleanup = window.setTimeout(cleanup, 60000);

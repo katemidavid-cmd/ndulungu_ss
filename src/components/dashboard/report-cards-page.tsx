@@ -171,8 +171,10 @@ function behaviourMarkFor(
   }
 
   if (isLow) {
-    if (roll < 0.12 || index === guaranteedIndex) return "dhaifu";
-    if (roll < 0.42) return "wastani";
+    // Automatic mode never marks a student as "dhaifu" (weak). Even students
+    // with low averages get at most "wastani" so no report card auto-fills a
+    // negative conduct rating.
+    if (roll < 0.42 || index === guaranteedIndex) return "wastani";
     return "vizuri";
   }
 
@@ -408,6 +410,19 @@ function safeFileName(value: string) {
   return value.replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim();
 }
 
+/**
+ * Printing certificates clones the certificates into a print-only element and
+ * hides the rest of the app while `window.print()` runs. If the browser never
+ * fires `afterprint` (or the user navigates away before it does), that state
+ * can stay in the document and the next printout shows the certificate sheet
+ * instead of the report cards. Always start report printing from a clean state.
+ */
+function clearCertificatePrintState() {
+  if (typeof document === "undefined") return;
+  document.body.classList.remove("printing-certificates");
+  document.getElementById("certificate-print-root")?.remove();
+}
+
 export function ReportCardsPage() {
   const [exams, setExams] = useState<Exam[]>([]);
   const [selectedExamId, setSelectedExamId] = useState("");
@@ -509,6 +524,15 @@ export function ReportCardsPage() {
     };
   }, [selectedExamId]);
 
+  // Drop any leftover certificate print DOM/body class as soon as the report
+  // page mounts, and again right before the browser builds a print preview.
+  useEffect(() => {
+    clearCertificatePrintState();
+    const prepare = () => clearCertificatePrintState();
+    window.addEventListener("beforeprint", prepare);
+    return () => window.removeEventListener("beforeprint", prepare);
+  }, []);
+
   function updateSchoolSignatures(signatures: SchoolSignatures) {
     setData((current) =>
       current
@@ -603,6 +627,7 @@ export function ReportCardsPage() {
 
   function printReport() {
     if (!data) return;
+    clearCertificatePrintState();
     document.title = safeFileName(
       `Results - ${data.exam.name} - ${data.exam.class_form} - ${data.exam.academic_year}`,
     );

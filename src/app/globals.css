@@ -96,7 +96,9 @@ input[type="reset"]:enabled,
   .exam-report,
   .exam-report *,
   .isal-print-shell,
-  .isal-print-shell * {
+  .isal-print-shell *,
+  #certificate-print-root,
+  #certificate-print-root * {
     visibility: visible !important;
   }
 
@@ -331,14 +333,16 @@ input[type="reset"]:enabled,
   }
 
   @supports selector(:has(*)) {
-    body *:not(.exam-report):not(.isal-print-shell):not(:has(.exam-report)):not(:has(.isal-print-shell)):not(.exam-report *):not(.isal-print-shell *) {
+    body *:not(.exam-report):not(.isal-print-shell):not(#certificate-print-root):not(:has(.exam-report)):not(:has(.isal-print-shell)):not(:has(#certificate-print-root)):not(.exam-report *):not(.isal-print-shell *):not(#certificate-print-root *) {
       display: none !important;
     }
 
     body:has(.exam-report),
     body *:has(.exam-report),
     body:has(.isal-print-shell),
-    body *:has(.isal-print-shell) {
+    body *:has(.isal-print-shell),
+    body:has(#certificate-print-root),
+    body *:has(#certificate-print-root) {
       display: block !important;
       float: none !important;
       width: auto !important;
@@ -383,7 +387,7 @@ input[type="reset"]:enabled,
     max-width: none !important;
     margin: 0 !important;
     padding: 0 !important;
-    font-size: 12pt !important;
+    font-size: 11pt !important;
     line-height: 1.2 !important;
     color: #000000 !important;
     background: #ffffff !important;
@@ -434,7 +438,7 @@ input[type="reset"]:enabled,
 
   .exam-report.report-card-page .report-card-header p {
     margin: 0 !important;
-    font-size: 12pt !important;
+    font-size: 11pt !important;
     line-height: 1.15 !important;
     color: #000000 !important;
   }
@@ -449,19 +453,19 @@ input[type="reset"]:enabled,
 
   .exam-report.report-card-page .report-card-exam-title {
     margin-top: 1pt !important;
-    font-size: 12pt !important;
+    font-size: 11pt !important;
     font-weight: 700 !important;
   }
 
   .exam-report.report-card-page section {
-    margin-top: 9pt !important;
+    margin-top: 4pt !important;
   }
 
   .exam-report.report-card-page .report-card-section-title {
     margin: 0 0 1.5pt !important;
     padding: 0 0 0.5pt !important;
     border-bottom: 0.5pt solid #94a3b8 !important;
-    font-size: 12pt !important;
+    font-size: 11pt !important;
     line-height: 1.1 !important;
     color: #0f172a !important;
   }
@@ -471,7 +475,7 @@ input[type="reset"]:enabled,
     padding: 1.5pt 0 !important;
     border-top: 0.5pt solid #cbd5e1 !important;
     border-bottom: 0.5pt solid #cbd5e1 !important;
-    font-size: 12pt !important;
+    font-size: 11pt !important;
     line-height: 1.2 !important;
   }
 
@@ -479,13 +483,13 @@ input[type="reset"]:enabled,
     width: 100% !important;
     border-collapse: collapse !important;
     border: 0.5pt solid #cbd5e1 !important;
-    font-size: 12pt !important;
+    font-size: 11pt !important;
     line-height: 1.1 !important;
   }
 
   .exam-report.report-card-page th,
   .exam-report.report-card-page td {
-    padding: 1.2pt 2pt !important;
+    padding: 0.9pt 2pt !important;
     border: 0.5pt solid #cbd5e1 !important;
     color: #000000 !important;
     background: #ffffff !important;
@@ -555,15 +559,15 @@ input[type="reset"]:enabled,
   }
 
   .exam-report.report-card-page .report-card-comments {
-    font-size: 12pt !important;
+    font-size: 11pt !important;
     line-height: 1.2 !important;
   }
 
   .exam-report.report-card-page .report-card-parent {
-    margin-top: 9pt !important;
+    margin-top: 4pt !important;
     padding: 2pt 3pt !important;
     border: 0.5pt solid #cbd5e1 !important;
-    font-size: 12pt !important;
+    font-size: 11pt !important;
     line-height: 1.2 !important;
     text-align: justify !important;
   }
@@ -572,7 +576,7 @@ input[type="reset"]:enabled,
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 14pt !important;
-    margin-top: 10pt !important;
+    margin-top: 5pt !important;
     padding-top: 0 !important;
   }
 
@@ -580,12 +584,12 @@ input[type="reset"]:enabled,
     border-top: 0 !important;
     padding-top: 0 !important;
     text-align: center !important;
-    font-size: 12pt !important;
+    font-size: 11pt !important;
     font-weight: 700 !important;
   }
 
   .exam-report.report-card-page .report-card-signature-space {
-    height: 50pt !important;
+    height: 36pt !important;
   }
 
   .exam-report.report-card-page .report-card-signature-line {
@@ -601,11 +605,11 @@ input[type="reset"]:enabled,
   }
 
   .exam-report.report-card-page .report-card-footer {
-    margin-top: 6pt !important;
+    margin-top: 2pt !important;
     padding-top: 2pt !important;
     border-top: 0.5pt solid #cbd5e1 !important;
     text-align: center !important;
-    font-size: 12pt !important;
+    font-size: 11pt !important;
     color: #475569 !important;
   }
 }
