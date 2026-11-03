@@ -12,6 +12,7 @@ import {
   FileText,
   ClipboardList,
   Settings,
+  Award,
   X,
   ChevronDown,
   type LucideIcon,
@@ -61,6 +62,12 @@ const navByRole: Record<string, RoleNavigation> = {
         ],
       },
       {
+        label: "Certificates",
+        items: [
+          { label: "Award Certificates", href: "/dashboard/headmaster/award-certificates", icon: Award },
+        ],
+      },
+      {
         label: "School Settings",
         items: [
           { label: "Settings", href: "/dashboard/headmaster/settings", icon: Settings },
@@ -95,6 +102,12 @@ const navByRole: Record<string, RoleNavigation> = {
         ],
       },
       {
+        label: "Certificates",
+        items: [
+          { label: "Award Certificates", href: "/dashboard/academic/award-certificates", icon: Award },
+        ],
+      },
+      {
         label: "School Settings",
         items: [
           { label: "Settings", href: "/dashboard/academic/settings", icon: Settings },
@@ -110,6 +123,7 @@ const navByRole: Record<string, RoleNavigation> = {
         items: [
           { label: "My Classes", href: "/dashboard/teacher/classes", icon: BookOpen },
           { label: "My Exams", href: "/dashboard/teacher/exams", icon: ClipboardList },
+          { label: "Award Certificates", href: "/dashboard/teacher/award-certificates", icon: Award },
         ],
       },
     ],
