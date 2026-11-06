@@ -55,6 +55,7 @@ function clamp(value: number, min: number, max: number) {
 
 export function ReportCardSignatures({ school }: { school: SchoolSignatures }) {
   const layout = normalizeSignatureLayout(school.signature_layout);
+  const stampUrl = school.school_stamp_url;
 
   return (
     <section className="report-card-signatures relative mt-4 grid grid-cols-2 gap-6">
@@ -89,6 +90,28 @@ export function ReportCardSignatures({ school }: { school: SchoolSignatures }) {
           );
         })}
       </div>
+
+      {stampUrl ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute z-20"
+          style={{
+            left: `${layout.stamp.x}%`,
+            top: `${layout.stamp.y}%`,
+            width: `${layout.stamp.width}%`,
+            height: `${layout.stamp.height}%`,
+          }}
+        >
+          <Image
+            src={stampUrl}
+            alt=""
+            fill
+            unoptimized
+            sizes="30vw"
+            className="object-contain"
+          />
+        </div>
+      ) : null}
 
       {REPORT_CARD_SIGNATURE_COLUMNS.map((kind) => (
         <div
