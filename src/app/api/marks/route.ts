@@ -43,8 +43,15 @@ async function getMarksContext() {
   if (profileError) {
     return { error: profileError.message, status: 500 as const };
   }
-  if (profile?.role !== "teacher" && profile?.role !== "academic") {
-    return { error: "Only teachers and academic staff can manage marks here." as const, status: 403 as const };
+  if (
+    profile?.role !== "teacher" &&
+    profile?.role !== "academic" &&
+    profile?.role !== "headmaster"
+  ) {
+    return {
+      error: "Only teachers, academic staff and the headmaster can manage marks here." as const,
+      status: 403 as const,
+    };
   }
 
   const admin = createAdminClient();

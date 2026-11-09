@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ClipboardList, LoaderCircle, Save, Search } from "lucide-react";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
@@ -61,8 +61,15 @@ async function readResponse<T>(response: Response): Promise<T> {
   return result;
 }
 
-export function MarksEntryPage({ dashboardBase }: { dashboardBase: string }) {
+export function MarksEntryPage({
+  dashboardBase,
+  initialExamId,
+}: {
+  dashboardBase: string;
+  initialExamId?: string;
+}) {
   const router = useRouter();
+  const appliedInitialExamId = useRef(false);
   const [exams, setExams] = useState<Exam[]>([]);
   const [examId, setExamId] = useState("");
   const [exam, setExam] = useState<Exam | null>(null);
@@ -116,8 +123,7 @@ export function MarksEntryPage({ dashboardBase }: { dashboardBase: string }) {
     let active = true;
 
     async function loadExams() {
-      const requestedExamId = new URLSearchParams(window.location.search).get("examId");
-      if (!requestedExamId) {
+      if (!initialExamId) {
         router.replace(`${dashboardBase}/exams`);
         return;
       }
@@ -143,21 +149,15 @@ export function MarksEntryPage({ dashboardBase }: { dashboardBase: string }) {
     return () => {
       active = false;
     };
-  }, [dashboardBase, router]);
+  }, [dashboardBase, initialExamId, router]);
 
   useEffect(() => {
-    const requestedExamId = new URLSearchParams(window.location.search).get("examId");
-    if (
-      requestedExamId &&
-      requestedExamId !== examId &&
-      exams.some((item) => item.id === requestedExamId)
-    ) {
-      const url = new URL(window.location.href);
-      url.searchParams.delete("examId");
-      window.history.replaceState(null, "", url);
-      void Promise.resolve().then(() => selectExam(requestedExamId));
-    }
-  }, [examId, exams, selectExam]);
+    if (appliedInitialExamId.current || !initialExamId) return;
+    if (!exams.some((item) => item.id === initialExamId)) return;
+
+    appliedInitialExamId.current = true;
+    void Promise.resolve().then(() => selectExam(initialExamId));
+  }, [exams, initialExamId, selectExam]);
 
   function selectSubject(nextSubjectId: string) {
     setSubjectId(nextSubjectId);
